@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysScoreMapper">
+    <select id="getCourseScoreCount" resultType="com.youlai.system.model.bo.CourseScoreCountBO">
+        SELECT
+            course_id AS courseId,
+            count( student_id ) AS scoreCount
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+        AND clazz_id = #{clazzId}
+        GROUP BY
+            course_id
+    </select>
+
+    <select id="getStudentSummaryScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            *,
+            DENSE_RANK() OVER ( ORDER BY studentScore DESC ) studentRank
+        FROM
+            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND clazz_id = #{clazzId} GROUP BY student_id ) score_summary
+    </select>
+
+    <select id="getStudentSummaryScoreClazzRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            *,
+            DENSE_RANK() OVER ( PARTITION BY clazzId ORDER BY studentScore DESC ) studentRank
+        FROM
+            (
+                SELECT
+                    clazz_id AS clazzId,
+                    student_id AS studentId,
+                    sum( score ) AS studentScore
+                FROM
+                    sys_score
+                WHERE
+                    exam_id = #{examId}
+                  AND grade_Id = #{gradeId}
+                GROUP BY
+                    clazz_id,
+                    student_id
+            ) score_summary
+    </select>
+
+    <select id="getGradeStudentSummaryScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            *,
+            DENSE_RANK() OVER ( ORDER BY studentScore DESC ) studentRank
+        FROM
+            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND grade_id = #{gradeId} GROUP BY student_id ) score_summary
+    </select>
+
+    <select id="getStudentCourseScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            student_id AS studentId,
+            course_id AS courseId,
+            score AS studentScore,
+            degree AS studentDegree,
+            RANK() OVER ( PARTITION BY course_id ORDER BY score DESC ) AS studentRank
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND clazz_id = #{clazzId};
+    </select>
+
+    <select id="getStudentCourseScoreClazzRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            clazz_id AS clazzId,
+            student_id AS studentId,
+            course_id AS courseId,
+            score AS studentScore,
+            degree AS studentDegree,
+            RANK() OVER ( PARTITION BY clazz_id, course_id ORDER BY score DESC ) AS studentRank
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND grade_id = #{gradeId};
+    </select>
+
+    <select id="getGradeStudentCourseScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
+        SELECT
+            student_id AS studentId,
+            course_id AS courseId,
+            score AS studentScore,
+            degree AS studentDegree,
+            RANK() OVER ( PARTITION BY course_id ORDER BY score DESC ) AS studentRank
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND grade_id = #{gradeId};
+    </select>
+
+    <select id="getCourseStaticsList" resultType="com.youlai.system.model.bo.CourseStaticsBO">
+        SELECT
+            course_id AS courseId,
+            ROUND(avg( score )) AS avgScore,
+            max( score ) AS maxScore,
+            min( score )  AS minScore,
+            COUNT(CASE WHEN degree = 1 THEN 1 END) AS aCount,
+            COUNT(CASE WHEN degree = 2 THEN 1 END) AS bCount,
+            COUNT(CASE WHEN degree = 3 THEN 1 END) AS cCount,
+            COUNT(CASE WHEN degree = 4 THEN 1 END) AS dCount,
+            COUNT(CASE WHEN degree = 5 THEN 1 END) AS eCount
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND clazz_id = #{clazzId}
+        GROUP BY
+            course_id;
+    </select>
+
+    <select id="getGradeCourseStaticsList" resultType="com.youlai.system.model.bo.CourseStaticsBO">
+        SELECT
+            course_id AS courseId,
+            ROUND(avg( score )) AS avgScore,
+            max( score ) AS maxScore,
+            min( score )  AS minScore,
+            COUNT(CASE WHEN degree = 1 THEN 1 END) AS aCount,
+            COUNT(CASE WHEN degree = 2 THEN 1 END) AS bCount,
+            COUNT(CASE WHEN degree = 3 THEN 1 END) AS cCount,
+            COUNT(CASE WHEN degree = 4 THEN 1 END) AS dCount,
+            COUNT(CASE WHEN degree = 5 THEN 1 END) AS eCount
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND grade_id = #{gradeId}
+        GROUP BY
+            course_id;
+    </select>
+
+    <select id="getGradeClazzStaticsList" resultType="com.youlai.system.model.bo.ClazzStaticsBO">
+        SELECT
+            clazz_id AS clazzId,
+            ROUND(avg( score )) AS avgScore,
+            max( score ) AS maxScore,
+            min( score )  AS minScore,
+            COUNT(CASE WHEN degree = 1 THEN 1 END) AS aCount,
+            COUNT(CASE WHEN degree = 2 THEN 1 END) AS bCount,
+            COUNT(CASE WHEN degree = 3 THEN 1 END) AS cCount,
+            COUNT(CASE WHEN degree = 4 THEN 1 END) AS dCount,
+            COUNT(CASE WHEN degree = 5 THEN 1 END) AS eCount
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND grade_id = #{gradeId}
+        GROUP BY
+            clazz_id;
+    </select>
+
+    <select id="getGradeCourseClazzStaticsList" resultType="com.youlai.system.model.bo.CourseClazzStaticsBO">
+        SELECT
+            course_id AS courseId,
+            clazz_id AS clazzId,
+            ROUND(avg( score )) AS avgScore,
+            max( score ) AS maxScore,
+            min( score )  AS minScore,
+            COUNT(CASE WHEN degree = 1 THEN 1 END) AS aCount,
+            COUNT(CASE WHEN degree = 2 THEN 1 END) AS bCount,
+            COUNT(CASE WHEN degree = 3 THEN 1 END) AS cCount,
+            COUNT(CASE WHEN degree = 4 THEN 1 END) AS dCount,
+            COUNT(CASE WHEN degree = 5 THEN 1 END) AS eCount
+        FROM
+            sys_score
+        WHERE
+            exam_id = #{examId}
+          AND grade_id = #{gradeId}
+        GROUP BY
+            course_id,
+            clazz_id order by course_id;
+    </select>
+
+    <select id="getAllExamSumScoreList" resultType="com.youlai.system.model.entity.SysScore">
+        SELECT
+            exam_id,
+            sum( score ) as score
+        FROM
+            sys_score
+        WHERE
+            student_id = #{studentId}
+        GROUP BY
+            exam_id
+    </select>
+</mapper>

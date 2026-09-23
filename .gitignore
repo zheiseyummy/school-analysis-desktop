@@ -1,0 +1,12 @@
+**/node_modules/
+**/dist/
+**/target/
+.tools/
+.cache/
+.test-results/
+data/
+files/
+backup/
+export/
+*.log
+*.pid

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysArrangeMapper">
+    <select id="getArrangePage" resultType="com.youlai.system.model.vo.ArrangePageVO">
+        SELECT
+            sa.id AS Id,
+            sa.clazz_id AS clazzId,
+            sc.`name` AS clazzName,
+            sa.course_id AS courseId,
+            scs.`name` AS courseName,
+            sa.teacher_id AS teacherId,
+            st.`name` AS teacherName,
+            sa.`STATUS` AS `status`,
+            sa.sort AS sort,
+            sa.remark AS remark
+        FROM
+            sys_arrange sa
+                LEFT JOIN sys_clazz sc ON sa.clazz_id = sc.id
+                LEFT JOIN sys_course scs ON sa.course_id = scs.id
+                LEFT JOIN sys_teacher st ON sa.teacher_id = st.id
+        <where>
+            sa.`STATUS` = 1
+            <if test='queryParams.clazzId!=null'>
+                AND sa.clazz_id = #{queryParams.clazzId}
+            </if>
+            <if test='queryParams.courseId!=null'>
+                AND sa.course_id = #{queryParams.courseId}
+            </if>
+            <if test='queryParams.teacherId!=null'>
+                AND sa.teacher_id = #{queryParams.teacherId}
+            </if>
+        </where>
+    </select>
+
+    <select id="getAllClazzArrangeList" resultType="com.youlai.system.model.bo.ClazzArrangeBO">
+        SELECT
+            sa.clazz_id AS clazzId,
+            count(sa.id) as arrangeCount,
+            GROUP_CONCAT(
+                    CONCAT('(', scs.`name`, '/', st.`name`, ')')) as arrangeNameList
+        FROM
+            sys_arrange sa
+                LEFT JOIN sys_clazz sc ON sa.clazz_id = sc.id
+                LEFT JOIN sys_course scs ON sa.course_id = scs.id
+                LEFT JOIN sys_teacher st ON sa.teacher_id = st.id
+        GROUP BY
+            sa.clazz_id
+    </select>
+
+    <select id="getClazzCourseBOList" resultType="com.youlai.system.model.bo.ClazzCourseBO">
+        SELECT
+            sa.id AS id,
+            scz.grade_id AS gradeId,
+            sg.`name` AS gradeName,
+            sa.clazz_id AS clazzId,
+            scz.`name` AS clazzName,
+            sa.course_id AS courseId,
+            sc.`name` AS courseName,
+            sc.subject_type as subjectType,
+            sc.full_score as fullScore,
+            sa.teacher_id AS teacherId,
+            st.`name` AS teacherName
+        FROM
+            sys_arrange sa
+                LEFT JOIN sys_clazz scz ON sa.clazz_id = scz.id
+                LEFT JOIN sys_grade sg ON scz.grade_id = sg.id
+                LEFT JOIN sys_course sc ON sa.course_id = sc.id
+                LEFT JOIN sys_teacher st ON sa.teacher_id = st.id
+        <where>
+            <if test='queryParams.clazzId!=null'>
+                AND sa.clazz_id = #{queryParams.clazzId}
+            </if>
+            <if test='queryParams.courseId!=null'>
+                AND sa.course_id = #{queryParams.courseId}
+            </if>
+            <if test='queryParams.teacherId!=null'>
+                AND sa.teacher_id = #{queryParams.teacherId}
+            </if>
+        </where>
+    </select>
+</mapper>

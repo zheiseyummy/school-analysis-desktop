@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysDictMapper">
+    <select id="getAllDictTypeDictList" resultType="com.youlai.system.model.bo.DictTypeDictBO">
+        SELECT
+            type_code as typeCode,
+            count( id ) as dictCount,
+            GROUP_CONCAT( NAME ) dictNameList
+        FROM
+            sys_dict
+        GROUP BY
+            type_code;
+    </select>
+</mapper>

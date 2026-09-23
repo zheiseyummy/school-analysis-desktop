@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysExamBodyMapper">
+    <select id="getExamBodyPage" resultType="com.youlai.system.model.vo.ExamBodyPageVO">
+        SELECT
+            seb.id AS id,
+            se.`year` AS `year`,
+            se.semester AS semester,
+            se.exam_type AS examType,
+            se.exam_date AS examDate,
+            seb.exam_id AS examId,
+            se.`name` AS examName,
+            seb.grade_clazz_id AS clazzId,
+            sc.`name` AS clazzName,
+            sc.grade_id AS gradeId,
+            sg.`name` AS gradeName
+        FROM
+            sys_exam_body seb
+                LEFT JOIN sys_exam se ON seb.exam_id = se.id
+                LEFT JOIN sys_clazz sc ON seb.grade_clazz_id = sc.id
+                LEFT JOIN sys_grade sg ON sc.grade_id = sg.id
+        <where>
+            seb.g_or_c = 'C'
+            <if test='queryParams.keywords!=null and queryParams.keywords.trim() neq ""'>
+                AND (
+                se.name LIKE CONCAT('%',#{queryParams.keywords},'%')
+                OR se.code LIKE CONCAT('%',#{queryParams.keywords},'%')
+                )
+            </if>
+            <if test='queryParams.year!=null'>
+                AND se.`year` = #{queryParams.year}
+            </if>
+            <if test='queryParams.semester!=null'>
+                AND se.semester = #{queryParams.semester}
+            </if>
+            <if test='queryParams.examType!=null'>
+                AND se.exam_type = #{queryParams.examType}
+            </if>
+            <if test='queryParams.clazzId!=null'>
+                AND seb.grade_clazz_id = #{queryParams.clazzId}
+            </if>
+            <if test='queryParams.gradeId!=null'>
+                AND sc.grade_id = #{queryParams.gradeId}
+            </if>
+        </where>
+            order by se.exam_date desc
+    </select>
+</mapper>

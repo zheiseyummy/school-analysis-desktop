@@ -1,0 +1,36 @@
+# Transitional local-only backend. SQLite and local files are the next migration.
+server:
+  address: 127.0.0.1
+  port: 8989
+
+spring:
+  application:
+    name: school-analysis-local
+  servlet:
+    multipart:
+      max-file-size: 128MB
+      max-request-size: 128MB
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${LOCAL_DB_URL:jdbc:mysql://127.0.0.1:3306/luoman_highschool?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${LOCAL_DB_USERNAME:root}
+    password: ${LOCAL_DB_PASSWORD:}
+
+mybatis-plus:
+  global-config:
+    db-config:
+      id-type: none
+  configuration:
+    map-underscore-to-camel-case: true
+
+# Kept only for the staged file-storage migration; no remote credentials shipped.
+oss:
+  type: minio
+  minio:
+    endpoint: ${LOCAL_MINIO_ENDPOINT:http://127.0.0.1:9000}
+    access-key: ${LOCAL_MINIO_ACCESS_KEY:local-placeholder}
+    secret-key: ${LOCAL_MINIO_SECRET_KEY:local-placeholder}
+    bucket-name: ${LOCAL_MINIO_BUCKET:school-files}

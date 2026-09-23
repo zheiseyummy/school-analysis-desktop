@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysTeacherMapper">
+
+    <select id="getAllTeacherSexCount" resultType="com.youlai.system.model.bo.TeacherSexCountBO">
+        SELECT
+            sex,
+            count( id ) AS teacherCount
+        FROM
+            sys_teacher
+        GROUP BY
+            sex;
+    </select>
+</mapper>

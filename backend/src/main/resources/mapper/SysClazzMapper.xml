@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.system.mapper.SysClazzMapper">
+    <select id="getAllGradeClazzCountNameList" resultType="com.youlai.system.model.bo.GradeClazzBO">
+        SELECT
+            grade_id as gradeId,
+            count( id ) as clazzCount,
+            GROUP_CONCAT( NAME )  as clazzNameList
+        FROM
+            sys_clazz
+        GROUP BY
+            grade_id
+    </select>
+</mapper>
