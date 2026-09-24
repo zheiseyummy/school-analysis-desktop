@@ -284,6 +284,34 @@ public class AnalysisController {
         return Result.success(result);
     }
 
+    @Operation(summary = "班级学生偏科分析")
+    @GetMapping("/clazzSubjectBalance")
+    public Result<List<Map<String, Object>>> clazzSubjectBalance(Long clazzId, Long examId) {
+        List<SysScore> scores = scoreService.getScoreListByExamIdAndClazzId(examId, clazzId);
+        Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
+        Map<Long, Map<Long, Double>> studentCourse = new HashMap<>();
+        scores.forEach(s -> {
+            if (s.getScore() != null) studentCourse.computeIfAbsent(s.getStudentId(), k -> new HashMap<>()).put(s.getCourseId(), s.getScore());
+        });
+        Map<Long, String> names = new HashMap<>();
+        studentService.listByIds(new ArrayList<>(studentCourse.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
+        List<Map<String, Object>> result = new ArrayList<>();
+        studentCourse.forEach((studentId, values) -> {
+            if (values.isEmpty()) return;
+            Map.Entry<Long, Double> best = values.entrySet().stream().max(Map.Entry.comparingByValue()).orElse(null);
+            Map.Entry<Long, Double> weak = values.entrySet().stream().min(Map.Entry.comparingByValue()).orElse(null);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, ""));
+            row.put("strongestCourse", best == null || courses.get(best.getKey()) == null ? "" : courses.get(best.getKey()).getName());
+            row.put("weakestCourse", weak == null || courses.get(weak.getKey()) == null ? "" : courses.get(weak.getKey()).getName());
+            row.put("strongestScore", best == null ? 0D : best.getValue()); row.put("weakestScore", weak == null ? 0D : weak.getValue());
+            row.put("scoreGap", best == null || weak == null ? 0D : best.getValue() - weak.getValue());
+            result.add(row);
+        });
+        result.sort((a, b) -> Double.compare((Double) b.get("scoreGap"), (Double) a.get("scoreGap")));
+        return Result.success(result);
+    }
+
     private double average(List<SysScore> scores) {
         return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
     }
