@@ -97,3 +97,23 @@ export function getStudentSingleCourseAnalysisData(
     params: queryParams,
   });
 }
+
+export function getTeacherAnalysisData(params: { examId: number; gradeId: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/teacherAnalysisData", method: "get", params });
+}
+
+export function getClazzSubjectProgress(params: { clazzId: number; gradeId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/clazzSubjectProgress", method: "get", params });
+}
+
+export function getStudentProgressRanking(params: { clazzId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/studentProgressRanking", method: "get", params });
+}
+
+export function getClazzSubjectWarnings(params: { clazzId: number; gradeId: number; examId: number; threshold?: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/clazzSubjectWarnings", method: "get", params });
+}
+
+export function getClazzSubjectBalance(params: { clazzId: number; examId: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/clazzSubjectBalance", method: "get", params });
+}
