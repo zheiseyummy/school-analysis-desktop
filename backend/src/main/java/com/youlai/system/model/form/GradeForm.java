@@ -18,6 +18,9 @@ public class GradeForm {
     @NotBlank(message = "年级名称不能为空")
     private String name;
 
+    @Schema(description="学段：初中/高中")
+    private String stage = "高中";
+
     @Schema(description = "年级主任ID")
     private Long managerId;
 

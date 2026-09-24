@@ -58,6 +58,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         component: () => import("@/views/school/course/index.vue"),
         meta: { title: "学科管理", icon: "document", keepAlive: true },
       },
+      {
+        path: "senior-selection",
+        name: "SeniorSelection",
+        component: () => import("@/views/school/senior_selection/index.vue"),
+        meta: { title: "高中选科与赋分", icon: "document", keepAlive: true },
+      },
     ],
   },
   {
@@ -108,6 +114,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         component: () =>
           import("@/views/analysis/student_score_analysis/index.vue"),
         meta: { title: "学生分析", icon: "user", keepAlive: true },
+      },
+      {
+        path: "course",
+        name: "CourseAnalysis",
+        component: () => import("@/views/analysis/course_analysis/index.vue"),
+        meta: { title: "学科分析", icon: "table", keepAlive: true },
       },
     ],
   },

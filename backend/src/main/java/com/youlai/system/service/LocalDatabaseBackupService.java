@@ -23,6 +23,7 @@ public class LocalDatabaseBackupService {
     public void backupOnStartup() { backup(); }
 
     public synchronized Path backup() {
+        if (!isFileBackedDatabase()) return null;
         try {
             Path database = databasePath();
             if (!Files.exists(database)) return null;
@@ -38,6 +39,7 @@ public class LocalDatabaseBackupService {
     }
 
     public List<String> listBackups() {
+        if (!isFileBackedDatabase()) return List.of();
         try {
             Path dir = databasePath().getParent().resolve("backup");
             if (!Files.exists(dir)) return List.of();
@@ -46,6 +48,7 @@ public class LocalDatabaseBackupService {
     }
 
     public synchronized void restore(String fileName) {
+        if (!isFileBackedDatabase()) throw new IllegalStateException("当前数据库不是本地文件，无法恢复备份");
         try {
             if (fileName == null || fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) throw new IllegalArgumentException("备份文件名无效");
             Path source = databasePath().getParent().resolve("backup").resolve(fileName).normalize();
@@ -55,7 +58,11 @@ public class LocalDatabaseBackupService {
     }
 
     private Path databasePath() {
-        String url = datasourceUrl.replace("jdbc:sqlite:", "");
+        String url = datasourceUrl.substring("jdbc:sqlite:".length());
         return Paths.get(url).toAbsolutePath().normalize();
+    }
+
+    private boolean isFileBackedDatabase() {
+        return datasourceUrl != null && datasourceUrl.startsWith("jdbc:sqlite:");
     }
 }

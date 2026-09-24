@@ -12,9 +12,13 @@ import {
   getExamOptions,
   getExamGradeClazzIds,
   updateExamGradeClazzs,
+  getExamCourseConfig,
+  updateExamCourseConfig,
 } from "@/api/exam";
 
-import { ExamQuery, ExamPageVO, ExamForm } from "@/api/exam/types";
+import { ExamQuery, ExamPageVO, ExamForm, ExamCourseConfig } from "@/api/exam/types";
+import { getScoreRules } from "@/api/score-rule";
+import { ScoreRule } from "@/api/score-rule/types";
 
 const queryFormRef = ref(ElForm);
 const examFormRef = ref(ElForm);
@@ -161,6 +165,9 @@ function handleDelete(examId?: number) {
 const menuRef = ref(ElTree);
 const menuDialogVisible = ref(false);
 const menuList = ref<OptionType[]>([]);
+const courseDialogVisible = ref(false);
+const courseConfigList = ref<ExamCourseConfig[]>([]);
+const scoreRules = ref<ScoreRule[]>([]);
 interface CheckedExam {
   id?: number;
   name?: string;
@@ -215,8 +222,47 @@ function handleExamGradeClazzSubmit() {
       });
   }
 }
+
+function openExamCourseDialog(row: ExamPageVO) {
+  if (!row.id) return;
+  checkedExam = { id: row.id, name: row.name };
+  courseDialogVisible.value = true;
+  loading.value = true;
+  getExamCourseConfig(row.id)
+    .then(({ data }) => (courseConfigList.value = data))
+    .finally(() => (loading.value = false));
+}
+
+function handleExamCourseSubmit() {
+  const examId = checkedExam.id;
+  if (!examId) return;
+  const selected = courseConfigList.value.filter((item) => item.selected).map((item) => ({
+    courseId: item.courseId,
+    fullScore: Number(item.fullScore),
+    countInTotal: item.countInTotal ? 1 : 0,
+    scoreMode: item.scoreMode || "ORIGINAL",
+    scoringRuleId: item.scoringRuleId,
+    sort: item.sort ?? 0,
+  }));
+  if (!selected.length) {
+    ElMessage.warning("至少启用一门考试科目");
+    return;
+  }
+  if (selected.some((item) => !item.fullScore || item.fullScore <= 0)) {
+    ElMessage.warning("已选科目的满分必须大于0");
+    return;
+  }
+  loading.value = true;
+  updateExamCourseConfig(examId, selected)
+    .then(() => {
+      ElMessage.success("考试科目及计分配置已保存");
+      courseDialogVisible.value = false;
+    })
+    .finally(() => (loading.value = false));
+}
 onMounted(() => {
   handleQuery();
+  getScoreRules().then(({ data }) => (scoreRules.value = data || []));
 });
 </script>
 <template>
@@ -349,6 +395,9 @@ onMounted(() => {
             >
               <i-ep-setting />考试设置
             </el-button>
+            <el-button type="primary" size="small" link @click="openExamCourseDialog(scope.row)">
+              <i-ep-notebook />科目设置
+            </el-button>
             <el-button
               type="primary"
               size="small"
@@ -474,6 +523,62 @@ onMounted(() => {
           >
           <el-button @click="menuDialogVisible = false">取 消</el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="courseDialogVisible"
+      :title="'【' + checkedExam.name + '】考试科目及计分配置'"
+      width="900px"
+    >
+      <el-alert
+        title="未选择的科目不会进入本场考试导入和成绩分析；满分和计入总分仅对本场考试生效。"
+        type="info"
+        :closable="false"
+        show-icon
+      />
+      <el-table v-loading="loading" :data="courseConfigList" border stripe style="margin-top: 12px">
+        <el-table-column label="启用科目" width="110" align="center">
+          <template #default="scope">
+            <el-checkbox v-model="scope.row.selected" />
+          </template>
+        </el-table-column>
+        <el-table-column label="科目" prop="courseName" width="180" />
+        <el-table-column label="默认满分" prop="defaultFullScore" width="120" />
+        <el-table-column label="本场满分" width="180">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.fullScore" :min="1" :max="1000" :precision="2" :disabled="!scope.row.selected" />
+          </template>
+        </el-table-column>
+        <el-table-column label="计入总分" width="130" align="center">
+          <template #default="scope">
+            <el-switch v-model="scope.row.countInTotal" :active-value="1" :inactive-value="0" :disabled="!scope.row.selected" />
+          </template>
+        </el-table-column>
+        <el-table-column label="成绩口径" width="150">
+          <template #default="scope">
+            <el-select v-model="scope.row.scoreMode" :disabled="!scope.row.selected" size="small">
+              <el-option label="原始分" value="ORIGINAL" />
+              <el-option label="赋分结果" value="SCALED" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="赋分规则" min-width="180">
+          <template #default="scope">
+            <el-select v-model="scope.row.scoringRuleId" clearable placeholder="待配置" :disabled="!scope.row.selected || scope.row.scoreMode !== 'SCALED'" size="small">
+              <el-option v-for="rule in scoreRules" :key="rule.id" :label="rule.name + (rule.method === 'PENDING' ? '（待定）' : '')" :value="rule.id!" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="顺序" width="130">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.sort" :min="0" :max="999" :disabled="!scope.row.selected" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button type="primary" :loading="loading" @click="handleExamCourseSubmit">保存</el-button>
+        <el-button @click="courseDialogVisible = false">取消</el-button>
       </template>
     </el-dialog>
   </div>

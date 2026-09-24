@@ -7,7 +7,6 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.youlai.system.common.model.Option;
 import com.youlai.system.common.result.PageResult;
 import com.youlai.system.common.result.Result;
-import com.youlai.system.common.util.DateUtils;
 import com.youlai.system.common.util.ExcelUtils;
 import com.youlai.system.model.form.TeacherForm;
 import com.youlai.system.model.query.TeacherPageQuery;
@@ -50,12 +49,6 @@ public class SysTeacherController {
             TeacherPageQuery queryParams
     ) {
         IPage<TeacherPageVO> result = teacherService.getTeacherPage(queryParams);
-        result.getRecords().forEach(it -> {
-
-            if (it.getBirthDay() != null) {
-                it.setAge(DateUtils.getChineseAge(it.getBirthDay(), true, false, false));
-            }
-        });
         return PageResult.success(result);
     }
 

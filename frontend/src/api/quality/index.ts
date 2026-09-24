@@ -59,6 +59,33 @@ export function getQualityFinal(clazzId: number) {
     method: "get",
   });
 }
+export function getQualityMissingReviews(clazzId: number) {
+  return request({
+    url: "/api/v1/quality/final/" + clazzId + "/missing-reviews",
+    method: "get",
+  });
+}
+export function updateQualityMissingReview(clazzId: number, studentId: number, semester: string, data: { status: string; remark?: string }) {
+  return request({
+    url: "/api/v1/quality/final/" + clazzId + "/missing-reviews/" + studentId + "/" + semester,
+    method: "put",
+    data,
+  });
+}
+export function updateQualityFinalRatios(clazzId: number, data: { aRatio: number; bRatio: number; cRatio: number }) {
+  return request({
+    url: "/api/v1/quality/final/" + clazzId + "/ratios",
+    method: "put",
+    data,
+  });
+}
+export function exportQualityFinal(clazzId: number) {
+  return request({
+    url: "/api/v1/quality/final/" + clazzId + "/export",
+    method: "get",
+    responseType: "arraybuffer",
+  });
+}
 export function generateQualityFinal(clazzId: number) {
   return request({
     url: "/api/v1/quality/final/" + clazzId + "/generate",

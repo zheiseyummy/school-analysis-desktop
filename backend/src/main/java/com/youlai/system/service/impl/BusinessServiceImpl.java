@@ -8,6 +8,7 @@ import com.youlai.system.common.model.Column;
 import com.youlai.system.common.util.ColumnUtils;
 import com.youlai.system.common.util.HistogramUtils;
 import com.youlai.system.common.util.ScoreUtils;
+import com.youlai.system.common.constant.ScoreStatus;
 import com.youlai.system.converter.ExamConverter;
 import com.youlai.system.model.bo.StudentCourseScoreBO;
 import com.youlai.system.model.bo.StudentScoreRankingBO;
@@ -43,6 +44,7 @@ public class BusinessServiceImpl implements BusinessService {
     private final SysGradeService gradeService;
 
     private final SysScoreService scoreService;
+    private final SysExamCourseService examCourseService;
 
     private final SysArrangeService arrangeService;
 
@@ -77,6 +79,7 @@ public class BusinessServiceImpl implements BusinessService {
             SysScore score = scoreMap.get(student.getId());
             if (score != null) {
                 scoreEntryVO.setScore(score.getScore());
+                scoreEntryVO.setStatus(score.getStatus() == null ? (score.getScore() == null ? null : ScoreStatus.NORMAL) : score.getStatus());
             }
             scoreEntryVOList.add(scoreEntryVO);
         });
@@ -93,10 +96,23 @@ public class BusinessServiceImpl implements BusinessService {
         Long clazzId = examBody.getGradeClazzId();
         SysClazz clazz = clazzService.getById(clazzId);
         SysGrade grade = gradeService.getById(clazz.getGradeId());
+        SysExamCourse examCourse = examCourseService.getByExamIdAndCourseId(examId, courseId);
+        if (examCourseService.hasConfig(examId) && examCourse == null) {
+            throw new IllegalArgumentException("该科目未启用，不能录入本场考试成绩");
+        }
         //考试ID、学生ID、课程ID 成绩表唯一性
         List<ScoreEntryVO> scoreEntryList = scoreEntryForm.getScoreList();
         SysArrange arrange = arrangeService.getOneByClazzIdAndCourseId(clazzId, courseId);
-        scoreEntryList.stream().filter(it -> it.getScore() != null).forEach(scoreEntry -> {
+        scoreEntryList.stream().filter(it -> it.getScore() != null || ScoreStatus.isStored(it.getStatus())).forEach(scoreEntry -> {
+            String status = scoreEntry.getStatus();
+            if (status == null || status.isBlank()) status = ScoreStatus.NORMAL;
+            if (!ScoreStatus.NORMAL.equals(status) && !ScoreStatus.isStored(status)) {
+                throw new IllegalArgumentException("成绩状态不支持: " + status);
+            }
+            if (ScoreStatus.NORMAL.equals(status) && scoreEntry.getScore() == null) return;
+            if (ScoreStatus.NORMAL.equals(status) && (scoreEntry.getScore() < 0 || scoreEntry.getScore() > effectiveFullScore(examId, course))) {
+                throw new IllegalArgumentException("成绩必须在 0-" + effectiveFullScore(examId, course) + " 范围内");
+            }
             SysScore score = scoreService.getScoreByExamIdAndStudentIdAndCourseId(examId, scoreEntry.getStudentId(), courseId);
             if (score == null) {
                 score = new SysScore();
@@ -108,8 +124,9 @@ public class BusinessServiceImpl implements BusinessService {
                 score.setStudentId(scoreEntry.getStudentId());
                 score.setCourseId(courseId);
                 score.setTeacherId(arrange.getTeacherId());
-                score.setScore(scoreEntry.getScore());
-                score.setDegree(ScoreUtils.scoreDegreeCalc(course.getFullScore().doubleValue(), scoreEntry.getScore()));
+                score.setScore(ScoreStatus.NORMAL.equals(status) ? scoreEntry.getScore() : null);
+                score.setStatus(status);
+                score.setDegree(ScoreStatus.NORMAL.equals(status) ? ScoreUtils.scoreDegreeCalc(effectiveFullScore(examId, course), scoreEntry.getScore()) : null);
                 scoreService.save(score);
             } else {
                 score.setGradeId(grade.getId());
@@ -117,13 +134,19 @@ public class BusinessServiceImpl implements BusinessService {
                 score.setClazzId(clazzId);
                 score.setClazzName(clazz.getName());
                 score.setTeacherId(arrange.getTeacherId());
-                score.setScore(scoreEntry.getScore());
-                score.setDegree(ScoreUtils.scoreDegreeCalc(course.getFullScore().doubleValue(), scoreEntry.getScore()));
+                score.setScore(ScoreStatus.NORMAL.equals(status) ? scoreEntry.getScore() : null);
+                score.setStatus(status);
+                score.setDegree(ScoreStatus.NORMAL.equals(status) ? ScoreUtils.scoreDegreeCalc(effectiveFullScore(examId, course), scoreEntry.getScore()) : null);
                 scoreService.updateById(score);
             }
         });
 
 
+    }
+
+    private double effectiveFullScore(Long examId, SysCourse course) {
+        SysExamCourse setting = examCourseService.getByExamIdAndCourseId(examId, course.getId());
+        return setting != null && setting.getFullScore() != null ? setting.getFullScore() : course.getFullScore().doubleValue();
     }
 
     @Override
@@ -148,6 +171,7 @@ public class BusinessServiceImpl implements BusinessService {
 
         //获取班级所有的课程列表
         List<Long> courseIdList = courseId != null ? arrangeService.getCourseIdListByClazzId(clazzId, courseId) : arrangeService.getCourseIdListByClazzId(clazzId);
+        courseIdList = filterConfiguredCourseIds(examId, courseIdList);
         if (CollectionUtil.isEmpty(courseIdList)) {
             return new HashMap<>();
         }
@@ -289,7 +313,7 @@ public class BusinessServiceImpl implements BusinessService {
         SysClazz clazz = clazzService.getById(clazzId);
 
         SysGrade grade = gradeService.getById(clazz.getGradeId());
-        List<Long> courseIdList = arrangeService.getCourseIdListByClazzId(clazzId);
+        List<Long> courseIdList = filterConfiguredCourseIds(examId, arrangeService.getCourseIdListByClazzId(clazzId));
         List<SysCourse> courseList = courseService.listByIds(courseIdList);
         List<Long> studentIdList = clazzStudentService.getStudentIdListBy(clazzId, exam.getYear());
         List<SysStudent> studentList = studentService.listByIds(studentIdList);
@@ -378,7 +402,7 @@ public class BusinessServiceImpl implements BusinessService {
 
         //获取年级所有的课程列表
         List<Long> clazzIdList = clazzService.clazzIdListByGradeId(gradeId);
-        List<Long> courseIdList = arrangeService.getCourseIdListByClazzIdList(clazzIdList);
+        List<Long> courseIdList = filterConfiguredCourseIds(examId, arrangeService.getCourseIdListByClazzIdList(clazzIdList));
         List<SysCourse> courseList = courseService.listByIds(courseIdList);
 
         // 表头数据构造
@@ -655,5 +679,14 @@ public class BusinessServiceImpl implements BusinessService {
         columns.add(ColumnUtils.buildRightFixedColumn("totalScore", "总分"));
         columns.add(ColumnUtils.buildRightFixedColumn("clazzRanking", "班级排名", 90));
         columns.add(ColumnUtils.buildRightFixedColumn("gradeRanking", "年级排名", 90));
+    }
+
+    private List<Long> filterConfiguredCourseIds(Long examId, List<Long> courseIds) {
+        if (!examCourseService.hasConfig(examId) || courseIds == null || courseIds.isEmpty()) return courseIds;
+        Set<Long> selected = examCourseService.getConfig(examId).stream()
+                .filter(config -> Boolean.TRUE.equals(config.getSelected()))
+                .map(com.youlai.system.model.vo.ExamCourseConfigVO::getCourseId)
+                .collect(Collectors.toSet());
+        return courseIds.stream().filter(selected::contains).toList();
     }
 }

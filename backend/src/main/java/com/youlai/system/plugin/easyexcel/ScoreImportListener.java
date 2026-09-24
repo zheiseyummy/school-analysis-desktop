@@ -7,6 +7,7 @@ import com.alibaba.excel.context.AnalysisContext;
 import com.youlai.system.model.entity.*;
 import com.youlai.system.model.form.ScoreEntryForm;
 import com.youlai.system.model.vo.ScoreEntryVO;
+import com.youlai.system.common.constant.ScoreStatus;
 import com.youlai.system.model.vo.ScoreImportVO;
 import com.youlai.system.service.*;
 import lombok.extern.slf4j.Slf4j;
@@ -156,7 +157,16 @@ public class ScoreImportListener extends MyAnalysisEventListener<ScoreImportVO> 
 
     }
 
-    private void saveScore(SysExamBody examBody, SysStudent student, SysCourse course, Double score) {
+    private void saveScore(SysExamBody examBody, SysStudent student, SysCourse course, String rawValue) {
+        String value = rawValue == null ? null : rawValue.trim();
+        String status = statusOf(value);
+        Double score = parseScore(value);
+        if (status == null && value != null && !value.isBlank()) {
+            invalidCount++;
+            msg.append("学生").append(student.getName()).append("的").append(course.getName())
+                    .append("成绩状态无法识别；<br/>");
+            return;
+        }
         if (score != null && (score < 0 || (course.getFullScore() != null && score > course.getFullScore()))) {
             invalidCount++;
             msg.append("学生").append(student.getName()).append("的").append(course.getName())
@@ -169,8 +179,29 @@ public class ScoreImportListener extends MyAnalysisEventListener<ScoreImportVO> 
         ScoreEntryVO scoreEntryVO = new ScoreEntryVO();
         scoreEntryVO.setStudentId(student.getId());
         scoreEntryVO.setScore(score);
+        scoreEntryVO.setStatus(status == null ? ScoreStatus.NORMAL : status);
         scoreEntryForm.setScoreList(List.of(scoreEntryVO));
         businessService.saveScore(scoreEntryForm);
+    }
+
+    private String statusOf(String value) {
+        if (value == null || value.isBlank()) return null;
+        return switch (value.replace(" ", "")) {
+            case "缺考", "缺席", "未参加" -> ScoreStatus.ABSENT;
+            case "未选科", "未选" -> ScoreStatus.NOT_SELECTED;
+            default -> isNumeric(value) ? ScoreStatus.NORMAL : null;
+        };
+    }
+
+    private Double parseScore(String value) {
+        if (value == null || value.isBlank() || ScoreStatus.ABSENT.equals(statusOf(value)) || ScoreStatus.NOT_SELECTED.equals(statusOf(value))) return null;
+        try { return Double.valueOf(value); }
+        catch (NumberFormatException ignored) { return null; }
+    }
+
+    private boolean isNumeric(String value) {
+        try { Double.valueOf(value); return true; }
+        catch (NumberFormatException ignored) { return false; }
     }
 
     @Override

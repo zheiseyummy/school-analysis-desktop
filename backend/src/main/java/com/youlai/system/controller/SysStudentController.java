@@ -9,7 +9,6 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.youlai.system.common.model.Option;
 import com.youlai.system.common.result.PageResult;
 import com.youlai.system.common.result.Result;
-import com.youlai.system.common.util.DateUtils;
 import com.youlai.system.common.util.ExcelUtils;
 import com.youlai.system.converter.StudentConverter;
 import com.youlai.system.model.bo.ClazzYearBO;
@@ -27,7 +26,6 @@ import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -82,12 +80,7 @@ public class SysStudentController {
 
         IPage<StudentPageVO> result = studentService.getStudentPage(queryParams);
         List<Long> studentIdList = new ArrayList<>();
-        result.getRecords().forEach(it -> {
-            studentIdList.add(it.getId());
-            if (it.getBirthDay() != null) {
-                it.setAge(DateUtils.getChineseAge(it.getBirthDay()));
-            }
-        });
+        result.getRecords().forEach(it -> studentIdList.add(it.getId()));
 
         if (CollectionUtil.isNotEmpty(studentIdList)) {
             Map<Long, StudentClazzBO> studentClazzBOMap = clazzStudentService.getStudentClazzCountNameMap(studentIdList);
@@ -139,7 +132,6 @@ public class SysStudentController {
         return saveStudentExtraInfo(studentForm, result);
     }
 
-    @NotNull
     private Result saveStudentExtraInfo(@Validated @RequestBody StudentForm studentForm, boolean result) {
         if (!result || studentForm.getClazzList() == null) {
             return Result.judge(result);

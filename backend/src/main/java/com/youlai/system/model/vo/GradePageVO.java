@@ -20,6 +20,9 @@ public class GradePageVO {
     @Schema(description = "年级名称")
     private String name;
 
+    @Schema(description = "学段")
+    private String stage;
+
     @Schema(description = "状态")
     private Integer status;
 

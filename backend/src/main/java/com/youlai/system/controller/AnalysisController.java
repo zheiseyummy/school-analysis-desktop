@@ -6,6 +6,8 @@ import cn.hutool.poi.excel.ExcelWriter;
 import com.youlai.system.common.exception.BusinessException;
 import com.youlai.system.common.result.Result;
 import com.youlai.system.common.result.ResultCode;
+import com.youlai.system.common.constant.ScoreStatus;
+import com.youlai.system.common.views.CourseAnalysisPDFView;
 import com.youlai.system.common.views.ExamPointScorePDFView;
 import com.youlai.system.model.bo.ClazzStaticsBO;
 import com.youlai.system.model.bo.CourseClazzStaticsBO;
@@ -14,6 +16,7 @@ import com.youlai.system.model.entity.SysClazz;
 import com.youlai.system.model.entity.SysCourse;
 import com.youlai.system.model.entity.SysExam;
 import com.youlai.system.model.entity.SysExamBody;
+import com.youlai.system.model.entity.SysExamCourse;
 import com.youlai.system.model.entity.SysScore;
 import com.youlai.system.model.entity.SysArrange;
 import com.youlai.system.model.entity.SysTeacher;
@@ -26,7 +29,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,6 +67,7 @@ public class AnalysisController {
     private final SysClazzStudentService clazzStudentService;
 
     private final SysExamService examService;
+    private final SysExamCourseService examCourseService;
     private final SysArrangeService arrangeService;
     private final SysTeacherService teacherService;
     private final SysStudentService studentService;
@@ -92,6 +95,61 @@ public class AnalysisController {
         Map<String, Object> resultMap = businessService.clazzExamAllCourseScoreSummaryExportData(examBody.getId());
         ExamPointScorePDFView examPointScorePDFView = new ExamPointScorePDFView();
         return new ModelAndView(examPointScorePDFView, resultMap);
+    }
+
+    @Operation(summary = "学科独立分析数据")
+    @GetMapping("/courseAnalysisData")
+    public Result<Map<String, Object>> courseAnalysisData(ClazzExamAnalysisQuery query) {
+        return Result.success(buildCourseAnalysis(query));
+    }
+
+    @Operation(summary = "学科独立分析正式Excel报告")
+    @RequestMapping("/courseAnalysisToExcel")
+    public void courseAnalysisToExcel(ClazzExamAnalysisQuery query, HttpServletResponse response) throws IOException {
+        Map<String, Object> model = buildCourseAnalysis(query);
+        String title = String.valueOf(model.get("title"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) model.get("summary");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) model.get("rows");
+
+        ExcelWriter writer = ExcelUtil.getWriter(true);
+        writer.merge(1, title);
+        writer.passCurrentRow();
+        List<Map<String, Object>> summaryRows = new ArrayList<>();
+        summary.forEach((key, value) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("指标", key);
+            row.put("数值", value);
+            summaryRows.add(row);
+        });
+        writer.write(summaryRows, true);
+        writer.passCurrentRow();
+        List<Map<String, Object>> exportRows = rows.stream().map(row -> {
+            Map<String, Object> exportRow = new LinkedHashMap<>();
+            exportRow.put("排名", row.get("rank"));
+            exportRow.put("学号", row.get("studentCode"));
+            exportRow.put("姓名", row.get("studentName"));
+            exportRow.put("班级", row.get("clazzName"));
+            exportRow.put("成绩", row.get("score"));
+            exportRow.put("状态", row.get("statusLabel"));
+            exportRow.put("得分率", row.get("percent") == null ? "-" : round(((Number) row.get("percent")).doubleValue()) + "%");
+            return exportRow;
+        }).toList();
+        writer.write(exportRows, true);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8");
+        response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(title + ".xlsx", "UTF-8"));
+        ServletOutputStream out = response.getOutputStream();
+        writer.flush(out, true);
+        writer.close();
+        IoUtil.close(out);
+    }
+
+    @Operation(summary = "学科独立分析正式PDF报告")
+    @RequestMapping("/courseAnalysisToPdf")
+    public ModelAndView courseAnalysisToPdf(ClazzExamAnalysisQuery query) {
+        Map<String, Object> model = buildCourseAnalysis(query);
+        return new ModelAndView(new CourseAnalysisPDFView(), model);
     }
 
     @Operation(summary = "班级某次考试成绩导出")
@@ -497,6 +555,109 @@ public class AnalysisController {
         writer.close();
     }
 
+    /**
+     * 构造学科独立分析数据。正常 0 分会参与统计，缺考和未选科只保留在明细中，不参与均值、排名和合格率。
+     */
+    private Map<String, Object> buildCourseAnalysis(ClazzExamAnalysisQuery query) {
+        if (query.getExamId() == null || query.getCourseId() == null
+                || (query.getGradeId() == null && query.getClazzId() == null)) {
+            throw new BusinessException(ResultCode.PARAM_ERROR);
+        }
+        SysExam exam = examService.getById(query.getExamId());
+        SysCourse course = courseService.getById(query.getCourseId());
+        if (exam == null || course == null) throw new BusinessException(ResultCode.PARAM_ERROR);
+
+        SysClazz clazz = query.getClazzId() == null ? null : clazzService.getById(query.getClazzId());
+        Long gradeId = query.getGradeId() != null ? query.getGradeId() : (clazz == null ? null : clazz.getGradeId());
+        List<SysScore> scores = query.getClazzId() != null
+                ? scoreService.getScoreListByExamIdAndClazzId(query.getExamId(), query.getClazzId())
+                : scoreService.getScoreListByExamIdAndGradeId(query.getExamId(), gradeId);
+        Map<Long, SysScore> scoreMap = scores.stream()
+                .filter(score -> query.getCourseId().equals(score.getCourseId()) && score.getStudentId() != null)
+                .collect(Collectors.toMap(SysScore::getStudentId, it -> it, (left, right) -> right, LinkedHashMap::new));
+
+        SysExamCourse examCourse = examCourseService.getByExamIdAndCourseId(query.getExamId(), query.getCourseId());
+        if (examCourseService.hasConfig(query.getExamId()) && examCourse == null) {
+            throw new BusinessException("该科目未启用，无法生成学科报告");
+        }
+        double fullScore = examCourse != null && examCourse.getFullScore() != null
+                ? examCourse.getFullScore() : (course.getFullScore() == null ? 100D : course.getFullScore());
+        List<SysScore> normalScores = scoreMap.values().stream().filter(this::isNormalScore).toList();
+        List<Double> values = normalScores.stream().map(SysScore::getScore).filter(Objects::nonNull).sorted().toList();
+        double average = values.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+        double median = values.isEmpty() ? 0D : (values.size() % 2 == 1 ? values.get(values.size() / 2)
+                : (values.get(values.size() / 2 - 1) + values.get(values.size() / 2)) / 2D);
+        double passLine = fullScore * .60D;
+        double excellentLine = fullScore * .85D;
+        long passCount = values.stream().filter(value -> value >= passLine).count();
+        long excellentCount = values.stream().filter(value -> value >= excellentLine).count();
+
+        List<Long> studentIds = new ArrayList<>(scoreMap.keySet());
+        Map<Long, SysStudent> studentMap = studentService.listByIds(studentIds).stream()
+                .collect(Collectors.toMap(SysStudent::getId, it -> it));
+        List<Map<String, Object>> normalRows = new ArrayList<>();
+        List<Map<String, Object>> otherRows = new ArrayList<>();
+        scoreMap.values().forEach(score -> {
+            SysStudent student = studentMap.get(score.getStudentId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("studentId", score.getStudentId());
+            row.put("studentCode", student == null ? "" : student.getCode());
+            row.put("studentName", student == null ? "" : student.getName());
+            row.put("clazzName", score.getClazzName() == null ? "" : score.getClazzName());
+            row.put("score", score.getScore());
+            String status = score.getStatus() == null ? (score.getScore() == null ? ScoreStatus.ABSENT : ScoreStatus.NORMAL) : score.getStatus();
+            row.put("status", status);
+            row.put("statusLabel", scoreStatusLabel(status));
+            row.put("percent", isNormalScore(score) && fullScore > 0 ? score.getScore() * 100D / fullScore : null);
+            if (isNormalScore(score)) normalRows.add(row); else otherRows.add(row);
+        });
+        normalRows.sort((left, right) -> Double.compare((Double) right.get("score"), (Double) left.get("score")));
+        for (int i = 0; i < normalRows.size(); i++) normalRows.get(i).put("rank", i + 1);
+        otherRows.forEach(row -> row.put("rank", null));
+        normalRows.addAll(otherRows);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("参考人数", scoreMap.size());
+        summary.put("有效成绩人数", normalScores.size());
+        summary.put("满分", fullScore);
+        summary.put("平均分", round(average));
+        summary.put("中位数", round(median));
+        summary.put("最高分", values.stream().mapToDouble(Double::doubleValue).max().orElse(0D));
+        summary.put("最低分", values.stream().mapToDouble(Double::doubleValue).min().orElse(0D));
+        summary.put("及格线", round(passLine));
+        summary.put("及格率", normalScores.isEmpty() ? 0D : round(passCount * 100D / normalScores.size()) + "%");
+        summary.put("优秀线", round(excellentLine));
+        summary.put("优秀率", normalScores.isEmpty() ? 0D : round(excellentCount * 100D / normalScores.size()) + "%");
+
+        String scopeName = clazz != null ? clazz.getName() : "年级";
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("title", "学科分析报告-" + (exam.getName() == null ? "考试" : exam.getName()) + "-" + course.getName());
+        result.put("exam", exam);
+        result.put("course", course);
+        result.put("clazz", clazz);
+        result.put("gradeId", gradeId);
+        result.put("scopeName", scopeName);
+        result.put("fullScore", fullScore);
+        result.put("summary", summary);
+        result.put("rows", normalRows);
+        return result;
+    }
+
+    private boolean isNormalScore(SysScore score) {
+        return score != null && score.getScore() != null
+                && (score.getStatus() == null || ScoreStatus.NORMAL.equals(score.getStatus()));
+    }
+
+    private String scoreStatusLabel(String status) {
+        if (ScoreStatus.NOT_SELECTED.equals(status)) return "未选科";
+        if (ScoreStatus.ABSENT.equals(status)) return "缺考";
+        return "正常";
+    }
+
+    private double round(double value) {
+        return Math.round(value * 100D) / 100D;
+    }
+
     private String cleanExportValue(Object value) {
         return value == null ? "" : String.valueOf(value).replaceAll("<[^>]*>", "");
     }
@@ -520,7 +681,6 @@ public class AnalysisController {
         return Result.success(resultMap);
     }
 
-    @NotNull
     private Result<Map<String, Object>> getMapResult(Map<String, Object> resultMap, List<CourseStaticsBO> courseStaticsBOList) {
         List<SysCourse> courseList = courseService.list();
         Map<Long, SysCourse> courseMap = courseList.stream().collect(Collectors.toMap(SysCourse::getId, it -> it));

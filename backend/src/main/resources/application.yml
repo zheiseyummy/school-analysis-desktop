@@ -1,11 +1,11 @@
-# Transitional local-only backend. SQLite and local files are the next migration.
+# Local-only backend for the desktop edition.
 server:
   address: 127.0.0.1
   port: 8989
 
 spring:
   application:
-    name: school-analysis-local
+    name: score-analysis-local
   servlet:
     multipart:
       max-file-size: 128MB
@@ -29,13 +29,8 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
-# Kept only for the staged file-storage migration; no remote credentials shipped.
+# Files are stored locally; no remote object-storage credentials are read.
 oss:
   type: local
   local:
     directory: files
-  minio:
-    endpoint: ${LOCAL_MINIO_ENDPOINT:http://127.0.0.1:9000}
-    access-key: ${LOCAL_MINIO_ACCESS_KEY:local-placeholder}
-    secret-key: ${LOCAL_MINIO_SECRET_KEY:local-placeholder}
-    bucket-name: ${LOCAL_MINIO_BUCKET:school-files}

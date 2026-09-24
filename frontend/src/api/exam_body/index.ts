@@ -6,6 +6,8 @@ import {
   ScoreEntryQuery,
   ScoreEntryVO,
   ScoreEntryForm,
+  ScoreImportPreview,
+  ScoreImportBatch,
 } from "./types";
 
 /**
@@ -100,5 +102,40 @@ export function getScoreImportStatus(examId: number): AxiosPromise<{ scoreCount:
     url: "/api/v1/exam_body_s/import/status",
     method: "get",
     params: { examId },
+  });
+}
+
+export function previewScoreImport(examId: number, file: File, blankPolicy: "KEEP" | "CLEAR") {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ScoreImportPreview>({
+    url: "/api/v1/exam_body_s/import/preview",
+    method: "post",
+    params: { examId, blankPolicy },
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+}
+
+export function confirmScoreImport(token: string, allowErrors: boolean) {
+  return request<{ appliedChanges: number; skippedErrorRows: number; batchId?: string }>({
+    url: "/api/v1/exam_body_s/import/confirm",
+    method: "post",
+    data: { token, allowErrors },
+  });
+}
+
+export function getScoreImportLogs(examId?: number): AxiosPromise<ScoreImportBatch[]> {
+  return request({
+    url: "/api/v1/exam_body_s/import/logs",
+    method: "get",
+    params: examId ? { examId } : undefined,
+  });
+}
+
+export function undoScoreImport(batchId: string) {
+  return request<{ batchId: string; undoneChanges: number }>({
+    url: "/api/v1/exam_body_s/import/undo/" + batchId,
+    method: "post",
   });
 }

@@ -61,6 +61,7 @@ public class SysGradeServiceImpl extends ServiceImpl<SysGradeMapper, SysGrade> i
         Assert.isTrue(nameCount == 0, "年级名称已存在");
         // 实体转换
         SysGrade grade = gradeConverter.form2Entity(gradeForm);
+        if (!"初中".equals(grade.getStage()) && !"高中".equals(grade.getStage())) grade.setStage("高中");
         return save(grade);
     }
 
@@ -83,6 +84,7 @@ public class SysGradeServiceImpl extends ServiceImpl<SysGradeMapper, SysGrade> i
 
         // form -> entity
         SysGrade entity = gradeConverter.form2Entity(gradeForm);
+        if (!"初中".equals(entity.getStage()) && !"高中".equals(entity.getStage())) entity.setStage("高中");
 
         // 修改年级
         return this.updateById(entity);

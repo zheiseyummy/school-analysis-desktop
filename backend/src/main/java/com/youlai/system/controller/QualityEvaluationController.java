@@ -39,10 +39,12 @@ public class QualityEvaluationController {
     @GetMapping("/class/{clazzId}")
     public Result<List<Map<String, Object>>> classStudents(@PathVariable Long clazzId) {
         String sql = "SELECT s.id AS studentId, s.code, s.name, " +
-                "(SELECT COUNT(DISTINCT semester) FROM quality_roster_entry qre WHERE qre.student_id=s.id AND qre.deleted=0) AS completedSemesters " +
+                "(SELECT COUNT(DISTINCT semester) FROM quality_roster_entry qre WHERE qre.student_id=s.id AND qre.deleted=0) AS completedSemesters, " +
+                "CASE WHEN EXISTS (SELECT 1 FROM quality_final_scope qfs WHERE qfs.clazz_id=? AND qfs.student_id=s.id) THEN 1 ELSE 0 END AS inFinalScope, " +
+                "(SELECT COUNT(*) FROM quality_missing_review qmr WHERE qmr.clazz_id=? AND qmr.student_id=s.id AND qmr.status='PENDING') AS pendingMissingCount " +
                 "FROM sys_student s JOIN sys_clazz_student cs ON cs.student_id=s.id " +
                 "WHERE cs.clazz_id=? AND s.deleted=0 ORDER BY s.code, s.name";
-        return Result.success(jdbcTemplate.queryForList(sql, clazzId));
+        return Result.success(jdbcTemplate.queryForList(sql, clazzId, clazzId, clazzId));
     }
 
     @GetMapping("/student/{studentId}")
@@ -85,6 +87,8 @@ public class QualityEvaluationController {
             byName.computeIfAbsent(text(s.get("name")), k -> new ArrayList<>()).add(s);
         }
         Map<String, String> sheetSemester = new LinkedHashMap<>();
+        Set<Long> baselineStudentIds = new LinkedHashSet<>();
+        boolean hasBaselineSheet = false;
         int totalRows = 0, matchedRows = 0;
         List<String> issues = new ArrayList<>();
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
@@ -92,6 +96,7 @@ public class QualityEvaluationController {
             for (int si = 0; si < workbook.getNumberOfSheets(); si++) {
                 Sheet sheet = workbook.getSheetAt(si);
                 String semester = semesterOf(sheet.getSheetName());
+                if ("junior_3_2".equals(semester)) hasBaselineSheet = true;
                 boolean rosterOnly = semester == null && (sheet.getSheetName().contains("名单") || sheet.getSheetName().toLowerCase().contains("roster"));
                 if (semester == null && !rosterOnly) continue;
                 if (semester != null) sheetSemester.put(sheet.getSheetName(), semester);
@@ -111,6 +116,7 @@ public class QualityEvaluationController {
                     }
                     if (student == null) { issues.add("工作表“" + sheet.getSheetName() + "”第" + (r + 1) + "行未匹配学生：" + (code.isBlank() ? name : code)); continue; }
                     matchedRows++;
+                    if ("junior_3_2".equals(semester)) baselineStudentIds.add(((Number) student.get("id")).longValue());
                     if (rosterOnly) {
                         for (String targetSemester : QualityScoring.SEMESTERS) jdbcTemplate.update("INSERT INTO quality_roster_entry(student_id, semester, deleted) VALUES(?,?,0) ON CONFLICT(student_id, semester) DO UPDATE SET deleted=0", student.get("id"), targetSemester);
                         continue;
@@ -124,9 +130,18 @@ public class QualityEvaluationController {
                 }
             }
         }
+        if (!hasBaselineSheet) {
+            issues.add("未找到最后一个学期工作表，最终人数不会更新；请导入包含完整学期数据的工作簿");
+        } else {
+            jdbcTemplate.update("DELETE FROM quality_final_scope WHERE clazz_id=?", clazzId);
+            for (Long studentId : baselineStudentIds) {
+                jdbcTemplate.update("INSERT INTO quality_final_scope(clazz_id,student_id,source_sheet,create_time,update_time) VALUES(?,?,?, ?, ?) ON CONFLICT(clazz_id,student_id) DO UPDATE SET source_sheet=excluded.source_sheet, update_time=excluded.update_time", clazzId, studentId, "九下", LocalDateTime.now().toString(), LocalDateTime.now().toString());
+            }
+            ensureMissingReviews(clazzId, baselineStudentIds);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("totalRows", totalRows); result.put("matchedRows", matchedRows); result.put("unmatchedRows", totalRows - matchedRows);
-        result.put("semesterSheets", sheetSemester); result.put("issues", issues);
+        result.put("semesterSheets", sheetSemester); result.put("issues", issues); result.put("baselineStudentCount", baselineStudentIds.size());
         return Result.success(result);
     }
 
@@ -147,19 +162,48 @@ public class QualityEvaluationController {
 
     @GetMapping("/final/{clazzId}")
     public Result<Map<String, Object>> finalResults(@PathVariable Long clazzId) {
-        List<Map<String, Object>> stateRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked, generated_at AS generatedAt FROM quality_finalization WHERE clazz_id=?", clazzId);
+        List<Map<String, Object>> stateRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked, generated_at AS generatedAt, COALESCE(a_ratio,0.60) AS aRatio, COALESCE(b_ratio,0.35) AS bRatio, COALESCE(c_ratio,0.05) AS cRatio, locked_at AS lockedAt FROM quality_finalization WHERE clazz_id=?", clazzId);
         Map<String, Object> state = stateRows.isEmpty() ? Map.of("isLocked", 0) : stateRows.get(0);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT r.student_id AS studentId, s.code, s.name, r.dimension, r.cumulative_score AS cumulativeScore, r.class_rank AS classRank, r.automatic_level AS automaticLevel, r.final_level AS finalLevel, r.available_terms AS availableTerms, r.contains_na AS containsNa FROM quality_final_result r JOIN sys_student s ON s.id=r.student_id WHERE r.clazz_id=? ORDER BY s.code, r.dimension", clazzId);
-        return Result.success(Map.of("state", state, "rows", rows));
+        int baselineCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_final_scope WHERE clazz_id=?", Integer.class, clazzId);
+        int pendingReviewCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
+        int pendingStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
+        int scoredStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_final_result WHERE clazz_id=?", Integer.class, clazzId);
+        return Result.success(Map.of("state", state, "rows", rows, "baselineStudentCount", baselineCount, "pendingReviewCount", pendingReviewCount, "pendingStudentCount", pendingStudentCount, "scoredStudentCount", scoredStudentCount));
+    }
+
+    @GetMapping("/final/{clazzId}/missing-reviews")
+    public Result<List<Map<String, Object>>> missingReviews(@PathVariable Long clazzId) {
+        String sql = "SELECT qmr.student_id AS studentId, s.code, s.name, qmr.semester, qmr.status, qmr.missing_dimensions AS missingDimensions, qmr.remark, qmr.updated_at AS updatedAt " +
+                "FROM quality_missing_review qmr JOIN sys_student s ON s.id=qmr.student_id WHERE qmr.clazz_id=? ORDER BY CASE qmr.status WHEN 'PENDING' THEN 0 ELSE 1 END, s.code, qmr.semester";
+        return Result.success(jdbcTemplate.queryForList(sql, clazzId));
+    }
+
+    @PutMapping("/final/{clazzId}/missing-reviews/{studentId}/{semester}")
+    public Result<Void> updateMissingReview(@PathVariable Long clazzId, @PathVariable Long studentId, @PathVariable String semester, @RequestBody Map<String, Object> body) {
+        if (!Arrays.asList(QualityScoring.SEMESTERS).contains(semester)) return Result.failed("评价学期无效");
+        String status = text(body.get("status")).toUpperCase();
+        if (!List.of("PENDING", "CONFIRMED_MISSING", "CONFIRMED_TRANSFER_IN").contains(status)) return Result.failed("缺失确认状态无效");
+        String missing = missingDimensions(studentId, semester);
+        if (missing.isBlank()) return Result.failed("该学生该学期已存在完整评价，无需缺失确认");
+        jdbcTemplate.update("INSERT INTO quality_missing_review(clazz_id,student_id,semester,status,missing_dimensions,remark,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(clazz_id,student_id,semester) DO UPDATE SET status=excluded.status,missing_dimensions=excluded.missing_dimensions,remark=excluded.remark,updated_at=excluded.updated_at", clazzId, studentId, semester, status, missing, text(body.get("remark")), LocalDateTime.now().toString());
+        return Result.success();
     }
 
     @Transactional
     @PostMapping("/final/{clazzId}/generate")
     public Result<Map<String, Object>> generateFinal(@PathVariable Long clazzId) {
-        List<Map<String,Object>> lockRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked FROM quality_finalization WHERE clazz_id=?", clazzId);
+        List<Map<String,Object>> lockRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked, COALESCE(a_ratio,0.60) AS aRatio, COALESCE(b_ratio,0.35) AS bRatio, COALESCE(c_ratio,0.05) AS cRatio FROM quality_finalization WHERE clazz_id=?", clazzId);
         Integer locked = lockRows.isEmpty() ? 0 : ((Number) lockRows.get(0).get("isLocked")).intValue();
         if (locked != null && locked == 1) return Result.failed("最终评定已锁定，请先解锁后重新计算");
-        List<Map<String, Object>> students = jdbcTemplate.queryForList("SELECT s.id, s.code, s.name FROM sys_student s JOIN sys_clazz_student cs ON cs.student_id=s.id WHERE cs.clazz_id=? AND s.deleted=0 ORDER BY s.code", clazzId);
+        double aRatio = lockRows.isEmpty() ? 0.60D : number(lockRows.get(0).get("aRatio"));
+        double bRatio = lockRows.isEmpty() ? 0.35D : number(lockRows.get(0).get("bRatio"));
+        double cRatio = lockRows.isEmpty() ? 0.05D : number(lockRows.get(0).get("cRatio"));
+        List<Map<String, Object>> scopedStudents = jdbcTemplate.queryForList("SELECT s.id, s.code, s.name FROM quality_final_scope qfs JOIN sys_student s ON s.id=qfs.student_id WHERE qfs.clazz_id=? AND s.deleted=0 ORDER BY s.code", clazzId);
+        if (scopedStudents.isEmpty()) return Result.failed("请先导入包含最后一个学期的评价数据，系统才能确定最终人数");
+        Set<Long> pendingStudentIds = new HashSet<>();
+        jdbcTemplate.queryForList("SELECT DISTINCT student_id FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", clazzId).forEach(row -> pendingStudentIds.add(((Number) row.get("student_id")).longValue()));
+        List<Map<String, Object>> students = scopedStudents.stream().filter(s -> !pendingStudentIds.contains(((Number) s.get("id")).longValue())).toList();
         jdbcTemplate.update("DELETE FROM quality_final_result WHERE clazz_id=?", clazzId);
         int count = 0;
         for (String dimension : QualityScoring.DIMENSIONS) {
@@ -178,18 +222,65 @@ public class QualityEvaluationController {
             int index=0; Double previous=null; int rank=0;
             for (Map<String,Object> value: values) {
                 index++; double score=(Double)value.get("score"); if(previous==null || Double.compare(previous,score)!=0) rank=index; previous=score;
-                String automatic = automaticLevel(rank, values.size()); Map<String,Object> student=(Map<String,Object>)value.get("student");
+                String automatic = automaticLevel(rank, values.size(), aRatio, cRatio); Map<String,Object> student=(Map<String,Object>)value.get("student");
                 jdbcTemplate.update("INSERT INTO quality_final_result(clazz_id,student_id,dimension,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na) VALUES(?,?,?,?,?,?,?,0,?,?)", clazzId, student.get("id"), dimension, score, rank, automatic, automatic, value.get("available"), Boolean.TRUE.equals(value.get("containsNa")) ? 1 : 0); count++;
             }
         }
-        jdbcTemplate.update("INSERT INTO quality_finalization(clazz_id,is_locked,generated_at) VALUES(?,0,?) ON CONFLICT(clazz_id) DO UPDATE SET generated_at=excluded.generated_at", clazzId, LocalDateTime.now().toString());
-        return Result.success(Map.of("count", count, "studentCount", students.size()));
+        jdbcTemplate.update("INSERT INTO quality_finalization(clazz_id,is_locked,generated_at,a_ratio,b_ratio,c_ratio) VALUES(?,0,?,?,?,?) ON CONFLICT(clazz_id) DO UPDATE SET generated_at=excluded.generated_at,a_ratio=excluded.a_ratio,b_ratio=excluded.b_ratio,c_ratio=excluded.c_ratio", clazzId, LocalDateTime.now().toString(), aRatio, bRatio, cRatio);
+        int pendingReviewCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
+        return Result.success(Map.of("count", count, "studentCount", scopedStudents.size(), "scoredStudentCount", students.size(), "pendingReviewCount", pendingReviewCount, "pendingStudentCount", pendingStudentIds.size()));
     }
 
     @PostMapping("/final/{clazzId}/lock")
     public Result<Void> lockFinal(@PathVariable Long clazzId, @RequestParam(defaultValue = "true") boolean locked) {
+        if (locked) {
+            int pending = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
+            if (pending > 0) return Result.failed("仍有 " + pending + " 条缺失成绩待确认，确认后才能锁定导出");
+        }
         jdbcTemplate.update("INSERT INTO quality_finalization(clazz_id,is_locked,locked_at) VALUES(?,?,?) ON CONFLICT(clazz_id) DO UPDATE SET is_locked=excluded.is_locked, locked_at=excluded.locked_at", clazzId, locked ? 1 : 0, locked ? LocalDateTime.now().toString() : null);
         return Result.success();
+    }
+
+    @PutMapping("/final/{clazzId}/ratios")
+    public Result<Void> updateFinalRatios(@PathVariable Long clazzId, @RequestBody Map<String, Object> body) {
+        double aRatio = ratio(body.get("aRatio"), 0.60D);
+        double bRatio = ratio(body.get("bRatio"), 0.35D);
+        double cRatio = ratio(body.get("cRatio"), 0.05D);
+        if (aRatio < 0 || bRatio < 0 || cRatio < 0 || Math.abs(aRatio + bRatio + cRatio - 1D) > 0.0001D) return Result.failed("A/B/C 比例必须为非负数且合计 100%");
+        List<Map<String,Object>> lockRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked FROM quality_finalization WHERE clazz_id=?", clazzId);
+        if (!lockRows.isEmpty() && ((Number) lockRows.get(0).get("isLocked")).intValue() == 1) return Result.failed("最终评定已锁定，请先解锁后调整比例");
+        jdbcTemplate.update("INSERT INTO quality_finalization(clazz_id,is_locked,a_ratio,b_ratio,c_ratio) VALUES(?,0,?,?,?) ON CONFLICT(clazz_id) DO UPDATE SET a_ratio=excluded.a_ratio,b_ratio=excluded.b_ratio,c_ratio=excluded.c_ratio", clazzId, aRatio, bRatio, cRatio);
+        return Result.success();
+    }
+
+    /** 导出老师已锁定确认的正式结果：姓名 + 五维最终分值 + 五维最终等级。 */
+    @GetMapping("/final/{clazzId}/export")
+    public void exportFinal(@PathVariable Long clazzId, HttpServletResponse response) throws IOException {
+        List<Map<String,Object>> stateRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked, COALESCE(a_ratio,0.60) AS aRatio, COALESCE(b_ratio,0.35) AS bRatio, COALESCE(c_ratio,0.05) AS cRatio, locked_at AS lockedAt FROM quality_finalization WHERE clazz_id=?", clazzId);
+        if (stateRows.isEmpty() || ((Number) stateRows.get(0).get("isLocked")).intValue() != 1) throw new IllegalStateException("请先由老师确认并锁定最终评定，再导出正式结果");
+        int pending = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
+        if (pending > 0) throw new IllegalStateException("仍有缺失成绩待确认，不能导出正式结果");
+        List<Map<String,Object>> students = jdbcTemplate.queryForList("SELECT DISTINCT s.id, s.name, s.code FROM quality_final_result r JOIN sys_student s ON s.id=r.student_id WHERE r.clazz_id=? ORDER BY s.code, s.name", clazzId);
+        String fileName = URLEncoder.encode("综合素质评价-正式最终结果.xlsx", "UTF-8"); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+        try (Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            Sheet resultSheet = workbook.createSheet("最终结果"); Row header = resultSheet.createRow(0); header.createCell(0).setCellValue("姓名");
+            int col = 1; for (String dimension : QualityScoring.DIMENSIONS) header.createCell(col++).setCellValue(dimension + "分值"); for (String dimension : QualityScoring.DIMENSIONS) header.createCell(col++).setCellValue(dimension + "等级"); header.createCell(col).setCellValue("学号");
+            int rowIndex = 1;
+            for (Map<String,Object> student : students) {
+                Row row = resultSheet.createRow(rowIndex++); row.createCell(0).setCellValue(text(student.get("name"))); col = 1;
+                List<Map<String,Object>> resultRows = jdbcTemplate.queryForList("SELECT dimension,cumulative_score AS score,final_level AS level FROM quality_final_result WHERE clazz_id=? AND student_id=?", clazzId, student.get("id"));
+                Map<String,Map<String,Object>> byDimension = new HashMap<>(); resultRows.forEach(item -> byDimension.put(text(item.get("dimension")), item));
+                for (String dimension : QualityScoring.DIMENSIONS) { Map<String,Object> item = byDimension.get(dimension); row.createCell(col++).setCellValue(item == null ? 0D : number(item.get("score"))); }
+                for (String dimension : QualityScoring.DIMENSIONS) { Map<String,Object> item = byDimension.get(dimension); row.createCell(col++).setCellValue(item == null ? "" : text(item.get("level"))); }
+                row.createCell(col).setCellValue(text(student.get("code")));
+            }
+            autoSize(resultSheet, 1 + QualityScoring.DIMENSIONS.length * 2 + 1);
+            Sheet configSheet = workbook.createSheet("评定配置"); Row configHeader = configSheet.createRow(0); configHeader.createCell(0).setCellValue("项目"); configHeader.createCell(1).setCellValue("值");
+            Row base = configSheet.createRow(1); base.createCell(0).setCellValue("最终参与人数"); base.createCell(1).setCellValue(students.size());
+            String[] labels = {"A比例", "B比例", "C比例", "老师确认时间"}; Object[] values = {stateRows.get(0).get("aRatio"), stateRows.get(0).get("bRatio"), stateRows.get(0).get("cRatio"), stateRows.get(0).get("lockedAt")};
+            for (int i = 0; i < labels.length; i++) { Row r = configSheet.createRow(i + 2); r.createCell(0).setCellValue(labels[i]); if (values[i] instanceof Number n) r.createCell(1).setCellValue(n.doubleValue()); else r.createCell(1).setCellValue(text(values[i])); }
+            autoSize(configSheet, 2); workbook.write(response.getOutputStream());
+        }
     }
 
     @PutMapping("/final/{clazzId}/level")
@@ -202,7 +293,31 @@ public class QualityEvaluationController {
         return Result.success();
     }
 
-    private static String automaticLevel(int rank, int size) { if (size == 0) return "B"; int a = (int)Math.ceil(size * .60); int c = (int)Math.floor(size * .05); if (rank <= a) return "A"; if (rank > size - c) return "C"; return "B"; }
+    private static String automaticLevel(int rank, int size, double aRatio, double cRatio) { if (size == 0) return "B"; int a = (int)Math.ceil(size * aRatio); int c = (int)Math.floor(size * cRatio); if (rank <= a) return "A"; if (c > 0 && rank > size - c) return "C"; return "B"; }
+
+    /** 为最后一个学期名单补齐缺失确认项；已确认的状态不会因重复导入被覆盖。 */
+    private void ensureMissingReviews(Long clazzId, Set<Long> baselineStudentIds) {
+        for (Long studentId : baselineStudentIds) {
+            for (String semester : QualityScoring.SEMESTERS) {
+                String missing = missingDimensions(studentId, semester);
+                if (missing.isBlank()) {
+                    jdbcTemplate.update("DELETE FROM quality_missing_review WHERE clazz_id=? AND student_id=? AND semester=?", clazzId, studentId, semester);
+                } else {
+                    String now = LocalDateTime.now().toString();
+                    jdbcTemplate.update("INSERT INTO quality_missing_review(clazz_id,student_id,semester,status,missing_dimensions,updated_at) VALUES(?,?,?,'PENDING',?,?) ON CONFLICT(clazz_id,student_id,semester) DO UPDATE SET missing_dimensions=excluded.missing_dimensions, updated_at=excluded.updated_at", clazzId, studentId, semester, missing, now);
+                }
+            }
+        }
+    }
+
+    private String missingDimensions(Long studentId, String semester) {
+        List<Map<String, Object>> records = jdbcTemplate.queryForList("SELECT dimension, level_or_score FROM quality_record WHERE student_id=? AND semester=? AND deleted=0", studentId, semester);
+        Map<String, String> levels = new HashMap<>();
+        for (Map<String, Object> record : records) levels.put(text(record.get("dimension")), text(record.get("level_or_score")));
+        return Arrays.stream(QualityScoring.DIMENSIONS)
+                .filter(dimension -> !List.of("A", "B", "C").contains(levels.getOrDefault(dimension, "N/A").toUpperCase()))
+                .collect(java.util.stream.Collectors.joining("、"));
+    }
 
     private void writeRosterSheet(Workbook wb, List<Map<String, Object>> students) {
         Sheet sheet = wb.createSheet("学生名单"); Row h = sheet.createRow(0); h.createCell(0).setCellValue("学号"); h.createCell(1).setCellValue("姓名"); h.createCell(2).setCellValue("已录入学期数");
@@ -226,6 +341,7 @@ public class QualityEvaluationController {
     private double totalScore(Object studentId, String dimension) { List<Map<String,Object>> records=jdbcTemplate.queryForList("SELECT semester,level_or_score FROM quality_record WHERE student_id=? AND dimension=? AND deleted=0",studentId,dimension); return records.stream().mapToDouble(r -> QualityScoring.score(text(r.get("semester")), text(r.get("level_or_score")))).sum(); }
     private static String text(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
     private static double number(Object value) { return value instanceof Number n ? n.doubleValue() : 0D; }
+    private static double ratio(Object value, double fallback) { if (value instanceof Number n) return n.doubleValue(); try { return value == null ? fallback : Double.parseDouble(String.valueOf(value)); } catch (NumberFormatException ignored) { return fallback; } }
     private static String cell(Row row, Integer index, DataFormatter formatter) { return index == null || row.getCell(index) == null ? "" : formatter.formatCellValue(row.getCell(index)).trim(); }
     private static String normalizeLevel(String value) { String v=value == null ? "" : value.trim().toUpperCase(); if (v.startsWith("A")) return "A"; if (v.startsWith("B")) return "B"; if (v.startsWith("C")) return "C"; return "N/A"; }
     private static Integer dimensionColumn(Map<String,Integer> columns, String dimension) { Integer c=columns.get(dimension); if(c!=null)return c; return columns.get(dimension.replace("与","")); }

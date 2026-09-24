@@ -10,11 +10,13 @@ import com.youlai.system.common.util.ExcelUtils;
 import com.youlai.system.model.bo.ClazzCourseBO;
 import com.youlai.system.model.bo.CourseScoreCountBO;
 import com.youlai.system.model.form.ScoreEntryForm;
+import com.youlai.system.model.form.ScoreImportConfirmForm;
 import com.youlai.system.model.query.ExamBodyPageQuery;
 import com.youlai.system.model.query.ScoreEntryQuery;
 import com.youlai.system.model.vo.ExamBodyPageVO;
 import com.youlai.system.model.vo.ScoreEntryVO;
 import com.youlai.system.model.vo.ScoreImportVO;
+import com.youlai.system.model.vo.ScoreImportPreviewVO;
 import com.youlai.system.plugin.easyexcel.ScoreImportListener;
 import com.youlai.system.service.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -55,6 +57,12 @@ public class ExamBodyController {
 
     private final SysScoreService scoreService;
 
+    private final SysExamCourseService examCourseService;
+
+    private final ScoreImportPreviewService scoreImportPreviewService;
+
+    private final SysScoreImportChangeLogService scoreImportChangeLogService;
+
     @Operation(summary = "考试主体分页列表")
     @GetMapping("/page")
     public PageResult<ExamBodyPageVO> getArrangePage(
@@ -73,6 +81,11 @@ public class ExamBodyController {
             it.setSemesterStr(semesterStr);
 
             List<ClazzCourseBO> courseList = arrangeService.getClazzCourseBOList(it.getClazzId());
+            java.util.Set<Long> selectedCourseIds = examCourseService.getConfig(it.getExamId()).stream()
+                    .filter(config -> Boolean.TRUE.equals(config.getSelected()))
+                    .map(com.youlai.system.model.vo.ExamCourseConfigVO::getCourseId)
+                    .collect(java.util.stream.Collectors.toSet());
+            courseList = courseList.stream().filter(course -> selectedCourseIds.contains(course.getCourseId())).toList();
 
             //考试ID，班级ID，统计课程有多少学生成绩已录入
             Map<Long, CourseScoreCountBO> courseScoreCountBOMap = scoreService.getCourseScoreCountMap(it.getExamId(), it.getClazzId());
@@ -151,6 +164,33 @@ public class ExamBodyController {
         ScoreImportListener listener = new ScoreImportListener(examId);
         String msg = ExcelUtils.importExcel(file.getInputStream(), ScoreImportVO.class, listener);
         return Result.success(msg);
+    }
+
+    @Operation(summary = "预览成绩导入")
+    @PostMapping("/import/preview")
+    public Result<ScoreImportPreviewVO> previewImport(@RequestParam Long examId,
+                                                       @RequestParam(defaultValue = "KEEP") String blankPolicy,
+                                                       MultipartFile file) throws IOException {
+        return Result.success(scoreImportPreviewService.preview(examId, file, blankPolicy));
+    }
+
+    @Operation(summary = "确认成绩导入")
+    @PostMapping("/import/confirm")
+    public Result<Map<String, Object>> confirmImport(@RequestBody @Valid ScoreImportConfirmForm form) {
+        return Result.success(scoreImportPreviewService.confirm(form.getToken(), Boolean.TRUE.equals(form.getAllowErrors())));
+    }
+
+    @Operation(summary = "成绩导入批次记录")
+    @GetMapping("/import/logs")
+    public Result<List<com.youlai.system.model.vo.ScoreImportBatchVO>> getImportLogs(@RequestParam(required = false) Long examId) {
+        return Result.success(scoreImportChangeLogService.listBatches(examId));
+    }
+
+    @Operation(summary = "撤销成绩导入批次")
+    @PostMapping("/import/undo/{batchId}")
+    public Result<Map<String, Object>> undoImport(@PathVariable String batchId) {
+        int undone = scoreImportChangeLogService.undoBatch(batchId);
+        return Result.success(Map.of("batchId", batchId, "undoneChanges", undone));
     }
 
 }

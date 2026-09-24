@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 import { AxiosPromise } from "axios";
-import { ExamQuery, ExamPageVO, ExamForm } from "./types";
+import { ExamQuery, ExamPageVO, ExamForm, ExamCourseConfig } from "./types";
 import { ClazzExamAnalysisQuery } from "@/api/analysis/types";
 
 /**
@@ -132,5 +132,20 @@ export function updateExamGradeClazzs(
     url: "/api/v1/exams/" + examId + "/gradeClazzIds",
     method: "put",
     data: data,
+  });
+}
+
+export function getExamCourseConfig(examId: number): AxiosPromise<ExamCourseConfig[]> {
+  return request({
+    url: "/api/v1/exams/" + examId + "/courses",
+    method: "get",
+  });
+}
+
+export function updateExamCourseConfig(examId: number, data: Array<Pick<ExamCourseConfig, "courseId" | "fullScore" | "countInTotal" | "sort">>): AxiosPromise<any> {
+  return request({
+    url: "/api/v1/exams/" + examId + "/courses",
+    method: "put",
+    data,
   });
 }

@@ -9,8 +9,10 @@ import {
   saveScore,
   getExamBodyScorePreview,
   downloadTemplateApi,
-  importScore,
-  getScoreImportStatus,
+  previewScoreImport,
+  confirmScoreImport,
+  getScoreImportLogs,
+  undoScoreImport,
 } from "@/api/exam_body";
 
 import {
@@ -19,6 +21,8 @@ import {
   ScoreEntryQuery,
   ScoreEntryVO,
   ScoreEntryForm,
+  ScoreImportPreview,
+  ScoreImportBatch,
 } from "@/api/exam_body/types";
 
 import type { UploadInstance } from "element-plus";
@@ -118,6 +122,14 @@ const importDialog = reactive({
   width: 600,
   visible: false,
 });
+
+const previewDialog = reactive({ visible: false });
+const importPreview = ref<ScoreImportPreview>();
+const importBlankPolicy = ref<"KEEP" | "CLEAR">("KEEP");
+const importSubmitting = ref(false);
+const importHistoryDialog = reactive({ visible: false });
+const importHistoryList = ref<ScoreImportBatch[]>([]);
+const importHistoryLoading = ref(false);
 
 //成绩录入变量定义
 const scoreEntryList = ref<ScoreEntryVO[]>();
@@ -274,6 +286,7 @@ function handleFileExceed(files: any) {
 }
 
 function openScoreImportDialog() {
+  resetImportFile();
   loadExamOptions();
   importDialog.title = "成绩导入";
   importDialog.visible = true;
@@ -281,6 +294,48 @@ function openScoreImportDialog() {
 
 function closeScoreImportDialog() {
   importDialog.visible = false;
+  resetImportFile();
+}
+
+function scoreStatusLabel(status?: string) {
+  return status === "ABSENT" ? "缺考" : status === "NOT_SELECTED" ? "未选科" : status === "NORMAL" ? "正常" : "未录入";
+}
+
+function resetImportFile() {
+  importData.file = undefined;
+  importData.fileList = [];
+  uploadRef.value?.clearFiles();
+}
+
+function closeImportPreview() {
+  previewDialog.visible = false;
+  importPreview.value = undefined;
+}
+
+function openImportHistory() {
+  importHistoryDialog.visible = true;
+  importHistoryLoading.value = true;
+  getScoreImportLogs()
+    .then(({ data }) => (importHistoryList.value = data))
+    .finally(() => (importHistoryLoading.value = false));
+}
+
+function handleImportUndo(row: ScoreImportBatch) {
+  ElMessageBox.confirm(
+    `确认撤销批次“${row.fileName || row.batchId}”的 ${row.changeCount - row.undoneCount} 项成绩变更？`,
+    "撤销成绩导入",
+    { type: "warning", confirmButtonText: "确认撤销", cancelButtonText: "取消" }
+  ).then(() => {
+    importHistoryLoading.value = true;
+    undoScoreImport(row.batchId)
+      .then(({ data }) => {
+        ElMessage.success(`已撤销 ${data.undoneChanges} 项成绩变更`);
+        row.undoneCount = row.changeCount;
+        row.canUndo = false;
+        resetQuery();
+      })
+      .finally(() => (importHistoryLoading.value = false));
+  });
 }
 
 const handleScoreImportSubmit = useThrottleFn(() => {
@@ -294,26 +349,30 @@ const handleScoreImportSubmit = useThrottleFn(() => {
         ElMessage.warning("上传Excel文件不能为空");
         return false;
       }
-      getScoreImportStatus(importData.examId).then(({ data }) => {
-        const confirmImport = () =>
-          importScore(importData.examId!, importData.file!).then((response) => {
-            ElMessage.success(response.data);
-            closeScoreImportDialog();
-            resetQuery();
-          });
-        if (data.hasExistingScores) {
-          ElMessageBox.confirm(
-            `该考试已有 ${data.scoreCount} 条成绩，继续导入将更新已有记录，是否确认？`,
-            "确认重新导入",
-            { type: "warning", confirmButtonText: "确认导入", cancelButtonText: "取消" }
-          ).then(confirmImport);
-        } else {
-          confirmImport();
-        }
-      });
+      importSubmitting.value = true;
+      previewScoreImport(importData.examId, importData.file, importBlankPolicy.value)
+        .then(({ data }) => {
+          importPreview.value = data;
+          importDialog.visible = false;
+          resetImportFile();
+          previewDialog.visible = true;
+        })
+        .finally(() => (importSubmitting.value = false));
     }
   });
 }, 3000);
+
+const handleImportConfirm = useThrottleFn(() => {
+  if (!importPreview.value) return;
+  importSubmitting.value = true;
+  confirmScoreImport(importPreview.value.token, importPreview.value.errorRows > 0)
+    .then(({ data }) => {
+      ElMessage.success(`导入完成：已应用 ${data.appliedChanges} 项变更，跳过 ${data.skippedErrorRows} 行错误数据`);
+      closeImportPreview();
+      resetQuery();
+    })
+    .finally(() => (importSubmitting.value = false));
+}, 1000);
 </script>
 <template>
   <div class="app-container">
@@ -404,6 +463,9 @@ const handleScoreImportSubmit = useThrottleFn(() => {
                   >
                   <el-dropdown-item @click="openScoreImportDialog">
                     <i-ep-top />导入数据</el-dropdown-item
+                  >
+                  <el-dropdown-item @click="openImportHistory">
+                    <i-ep-tickets />导入记录</el-dropdown-item
                   >
                 </el-dropdown-menu>
               </template>
@@ -580,7 +642,13 @@ const handleScoreImportSubmit = useThrottleFn(() => {
                   :min="0"
                   :max="dialog.fullScore"
                   v-model="item.score"
+                  :disabled="item.status === 'ABSENT' || item.status === 'NOT_SELECTED'"
                 />
+                <el-select v-model="item.status" class="score-status" placeholder="状态">
+                  <el-option label="正常" value="NORMAL" />
+                  <el-option label="缺考" value="ABSENT" />
+                  <el-option label="未选科" value="NOT_SELECTED" />
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -671,15 +739,93 @@ const handleScoreImportSubmit = useThrottleFn(() => {
             </template>
           </el-upload>
         </el-form-item>
+        <el-form-item label="空白成绩处理">
+          <el-radio-group v-model="importBlankPolicy">
+            <el-radio label="KEEP">保留原成绩（推荐）</el-radio>
+            <el-radio label="CLEAR">清除原成绩</el-radio>
+          </el-radio-group>
+          <div class="form-tip">系统会先预览差异，空白不会自动当作缺考或 0 分。</div>
+        </el-form-item>
       </el-form>
       <!-- 弹窗底部操作按钮 -->
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="handleScoreImportSubmit"
+          <el-button type="primary" :loading="importSubmitting" @click="handleScoreImportSubmit"
             >确 定</el-button
           >
           <el-button @click="closeScoreImportDialog">取 消</el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="previewDialog.visible"
+      title="确认成绩导入"
+      width="1000px"
+      append-to-body
+      @close="closeImportPreview"
+    >
+      <template v-if="importPreview">
+        <el-alert
+          :type="importPreview.errorRows ? 'warning' : 'success'"
+          :closable="false"
+          show-icon
+          :title="`共解析 ${importPreview.totalRows} 行，有效 ${importPreview.validRows} 行，错误 ${importPreview.errorRows} 行，待应用 ${importPreview.changeCount} 项变更`"
+        />
+        <div class="preview-tip">
+          空白处理：{{ importPreview.blankPolicy === "KEEP" ? "保留原成绩" : "清除原成绩" }}；空白不会自动判为缺考或 0 分。
+        </div>
+        <el-collapse v-if="importPreview.errors.length" class="preview-section">
+          <el-collapse-item title="查看错误行（错误行不会写入）" name="errors">
+            <el-scrollbar max-height="180px">
+              <div v-for="error in importPreview.errors" :key="error" class="preview-error">{{ error }}</div>
+            </el-scrollbar>
+          </el-collapse-item>
+        </el-collapse>
+        <el-table :data="importPreview.changes" border stripe max-height="360px" class="preview-section">
+          <el-table-column prop="rowNumber" label="行" width="70" />
+          <el-table-column prop="studentCode" label="学号" width="130" />
+          <el-table-column prop="studentName" label="姓名" width="110" />
+          <el-table-column prop="courseName" label="科目" width="110" />
+          <el-table-column prop="action" label="操作" width="100">
+            <template #default="scope">
+              {{ scope.row.action === "ADD" ? "新增" : scope.row.action === "UPDATE" ? "更新" : "清除" }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="oldScore" label="原成绩" />
+          <el-table-column prop="newScore" label="新成绩" />
+          <el-table-column label="状态" width="150">
+            <template #default="scope">
+              {{ scoreStatusLabel(scope.row.newStatus || scope.row.oldStatus) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <template #footer>
+        <el-button @click="closeImportPreview">取消</el-button>
+        <el-button type="primary" :loading="importSubmitting" :disabled="!importPreview || !importPreview.changeCount" @click="handleImportConfirm">确认提交有效变更</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importHistoryDialog.visible" title="成绩导入记录" width="900px">
+      <el-table v-loading="importHistoryLoading" :data="importHistoryList" border stripe>
+        <el-table-column label="导入时间" prop="createdAt" width="180" />
+        <el-table-column label="文件名" prop="fileName" min-width="220" show-overflow-tooltip />
+        <el-table-column label="变更数" prop="changeCount" width="90" align="center" />
+        <el-table-column label="状态" width="110" align="center">
+          <template #default="scope">
+            <el-tag v-if="scope.row.canUndo" type="warning">可撤销</el-tag>
+            <el-tag v-else type="info">已撤销</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="scope">
+            <el-button v-if="scope.row.canUndo" type="danger" link @click="handleImportUndo(scope.row as ScoreImportBatch)">撤销</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="importHistoryDialog.visible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -704,5 +850,27 @@ const handleScoreImportSubmit = useThrottleFn(() => {
   color: white;
   background-color: #f56c6c;
   border-radius: 50%;
+}
+
+.form-tip,
+.preview-tip {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.score-status {
+  width: 96px;
+  margin-left: 8px;
+}
+
+.preview-section {
+  margin-top: 14px;
+}
+
+.preview-error {
+  padding: 3px 8px;
+  color: var(--el-color-danger);
 }
 </style>

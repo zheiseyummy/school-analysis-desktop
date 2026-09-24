@@ -46,6 +46,7 @@ const formData = reactive<GradeForm>({
   status: 1,
   name: "",
   code: "",
+  stage: "高中",
 });
 
 const rules = reactive({
@@ -133,6 +134,7 @@ function resetForm() {
   formData.id = undefined;
   formData.code = "";
   formData.name = "";
+  formData.stage = "高中";
   formData.sort = 1;
   formData.status = 1;
 }
@@ -239,6 +241,7 @@ onMounted(() => {
           width="120"
           align="center"
         />
+        <el-table-column label="学段" prop="stage" width="90" align="center" />
         <el-table-column
           label="年级主任"
           prop="managerName"
@@ -315,6 +318,12 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="年级名称" prop="name">
           <el-input v-model="formData.name" placeholder="请输入年级名称" />
+        </el-form-item>
+        <el-form-item label="学段" prop="stage">
+          <el-radio-group v-model="formData.stage">
+            <el-radio label="初中">初中</el-radio>
+            <el-radio label="高中">高中</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="年级主任" prop="managerId">
           <el-select v-model="formData.managerId" placeholder="请选择年级主任">

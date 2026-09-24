@@ -130,6 +130,8 @@ export interface ScoreEntryVO {
    * 成绩
    */
   score?: number;
+  /** NORMAL=正常分数（含0分），ABSENT=缺考，NOT_SELECTED=未选科 */
+  status?: "NORMAL" | "ABSENT" | "NOT_SELECTED";
 }
 
 /**
@@ -139,4 +141,41 @@ export interface ScoreEntryForm {
   examBodyId?: number;
   courseId?: number;
   scoreList?: ScoreEntryVO[];
+}
+
+export interface ScoreImportChange {
+  rowNumber: number;
+  studentCode: string;
+  studentName: string;
+  courseName: string;
+  action: "ADD" | "UPDATE" | "CLEAR";
+  oldScore?: number;
+  newScore?: number;
+  oldStatus?: "NORMAL" | "ABSENT" | "NOT_SELECTED";
+  newStatus?: "NORMAL" | "ABSENT" | "NOT_SELECTED";
+  message?: string;
+}
+
+export interface ScoreImportPreview {
+  token: string;
+  examId: number;
+  fileName?: string;
+  blankPolicy: "KEEP" | "CLEAR";
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  changeCount: number;
+  blankCellCount: number;
+  changes: ScoreImportChange[];
+  errors: string[];
+}
+
+export interface ScoreImportBatch {
+  batchId: string;
+  examId: number;
+  fileName?: string;
+  createdAt?: string;
+  changeCount: number;
+  undoneCount: number;
+  canUndo: boolean;
 }

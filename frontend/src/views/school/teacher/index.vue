@@ -17,7 +17,6 @@ import {
 import { TeacherQuery, TeacherPageVO, TeacherForm } from "@/api/teacher/types";
 import type { UploadFile } from "element-plus";
 import type { UploadInstance } from "element-plus";
-import { uploadFileApi } from "@/api/file";
 
 import { genFileId } from "element-plus";
 
@@ -166,7 +165,6 @@ function resetForm() {
   teacherFormRef.value.clearValidate();
 
   formData.id = undefined;
-  formData.avatar = undefined;
   formData.sort = 1;
   formData.status = 1;
 }
@@ -191,12 +189,6 @@ function handleDelete(teacherId?: number) {
         resetQuery();
       })
       .finally(() => (loading.value = false));
-  });
-}
-
-async function onChange(file: UploadFile) {
-  uploadFileApi(file.raw as File).then(({ data }) => {
-    formData.avatar = data.url;
   });
 }
 
@@ -287,17 +279,6 @@ onMounted(() => {
           />
         </el-form-item>
 
-        <el-form-item label="入职年份" prop="year">
-          <el-date-picker
-            v-model="queryParams.year"
-            type="year"
-            format="YYYY"
-            value-format="YYYY"
-            clearable
-            placeholder="请选择入职年份"
-          />
-        </el-form-item>
-
         <el-form-item>
           <el-button type="primary" @click="handleQuery"
             ><i-ep-search />搜索</el-button
@@ -341,68 +322,52 @@ onMounted(() => {
           </div>
         </div>
       </template>
-      <div class="images" v-viewer>
-        <el-table
-          ref="dataTableRef"
-          v-loading="loading"
-          :data="teacherList"
-          highlight-current-row
-          border
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="55" align="center" />
-          <el-table-column label="头像" align="center" prop="avatar" width="60">
-            <template #default="scope">
-              <img :src="scope.row.avatar" class="user-avatar" />
-            </template>
-          </el-table-column>
-          <el-table-column align="center" label="教师工号" prop="code" />
-          <el-table-column label="教师姓名" prop="name" />
-          <el-table-column
-            align="center"
-            label="性别"
-            prop="sexLabel"
-            width="80"
-          />
-          <el-table-column
-            align="center"
-            label="出生日期"
-            prop="birthDay"
-            width="100"
-          />
-          <el-table-column align="center" label="年龄" prop="age" width="80" />
-          <el-table-column align="center" label="电话" prop="phone" />
-          <el-table-column align="center" label="入职年份" prop="year" />
-          <el-table-column label="备注" prop="remark" />
-          <!-- <el-table-column label="创建时间" prop="createTime" /> -->
-          <el-table-column label="状态" align="center" width="100">
-            <template #default="scope">
-              <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-              <el-tag v-else type="info">禁用</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column fixed="right" label="操作" width="160">
-            <template #default="scope">
-              <el-button
-                type="primary"
-                size="small"
-                link
-                @click="openDialog('teacher-form', scope.row.id)"
-              >
-                <i-ep-edit />编辑
-              </el-button>
-              <el-button
-                type="primary"
-                size="small"
-                link
-                @click="handleDelete(scope.row.id)"
-              >
-                <i-ep-delete />删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+      <el-table
+        ref="dataTableRef"
+        v-loading="loading"
+        :data="teacherList"
+        highlight-current-row
+        border
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column align="center" label="教师工号" prop="code" />
+        <el-table-column label="教师姓名" prop="name" />
+        <el-table-column
+          align="center"
+          label="性别"
+          prop="sexLabel"
+          width="80"
+        />
+        <el-table-column align="center" label="电话" prop="phone" />
+        <!-- <el-table-column label="创建时间" prop="createTime" /> -->
+        <el-table-column label="状态" align="center" width="100">
+          <template #default="scope">
+            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
+            <el-tag v-else type="info">禁用</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" label="操作" width="160">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="openDialog('teacher-form', scope.row.id)"
+            >
+              <i-ep-edit />编辑
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="handleDelete(scope.row.id)"
+            >
+              <i-ep-delete />删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
       <pagination
         v-if="total > 0"
         v-model:total="total"
@@ -427,49 +392,15 @@ onMounted(() => {
         label-width="100px"
       >
         <el-row>
-          <el-col :span="6">
-            <el-form-item label="个人头像">
-              <el-upload
-                ref="upload"
-                class="avatar-uploader"
-                action="javascript:void(0);"
-                :show-file-list="false"
-                :auto-upload="false"
-                :on-change="onChange"
-                accept="image/*"
-              >
-                <el-icon class="avatar-uploader-icon"><Plus /></el-icon>
-              </el-upload>
+          <el-col :span="12">
+            <el-form-item label="教师姓名" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入教师姓名" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
-            <div class="images" v-viewer>
-              <img
-                v-if="formData.avatar"
-                :src="formData.avatar"
-                class="avatar"
-              />
-            </div>
-          </el-col>
           <el-col :span="12">
-            <el-row>
-              <el-col :span="24">
-                <el-form-item label="教师姓名" prop="name">
-                  <el-input
-                    v-model="formData.name"
-                    placeholder="请输入教师姓名"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="24">
-                <el-form-item label="教师工号" prop="code">
-                  <el-input
-                    v-model="formData.code"
-                    placeholder="请输入教师工号"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <el-form-item label="教师工号" prop="code">
+              <el-input v-model="formData.code" placeholder="请输入教师工号" />
+            </el-form-item>
           </el-col>
         </el-row>
 
@@ -493,47 +424,6 @@ onMounted(() => {
           <el-col :span="12">
             <el-form-item label="电话" prop="phone">
               <el-input v-model="formData.phone" placeholder="请输入电话" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="出生日期" prop="birthDay">
-              <el-date-picker
-                v-model="formData.birthDay"
-                type="date"
-                placeholder="请选择出生日期"
-                size="default"
-                value-format="YYYY-MM-DD"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="入职年份" prop="year">
-              <el-date-picker
-                v-model="formData.year"
-                type="year"
-                format="YYYY"
-                value-format="YYYY"
-                placeholder="请选择入职年份"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col>
-            <el-form-item label="备注" prop="remark">
-              <el-input
-                v-model="formData.remark"
-                :rows="2"
-                type="textarea"
-                placeholder="请输入备注"
-              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -580,39 +470,4 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
-<style>
-.avatar-uploader .el-upload {
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 6px;
-  transition: var(--el-transition-duration-fast);
-}
-
-.avatar-uploader .el-upload:hover {
-  border-color: var(--el-color-primary);
-}
-
-.el-icon.avatar-uploader-icon {
-  width: 96px;
-  height: 96px;
-  font-size: 28px;
-  color: #8c939d;
-  text-align: center;
-}
-
-.avatar {
-  display: block;
-  width: 96px;
-  height: 96px;
-  margin-left: 15px;
-}
-
-.user-avatar {
-  display: block;
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
-}
-</style>
+<style></style>

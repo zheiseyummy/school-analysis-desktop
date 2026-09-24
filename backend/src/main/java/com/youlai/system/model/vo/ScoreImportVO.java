@@ -19,29 +19,29 @@ public class ScoreImportVO {
     private String studentName;
 
     @ExcelProperty(value = "语文")
-    private Double chineseScore;
+    private String chineseScore;
 
     @ExcelProperty(value = "数学")
-    private Double mathScore;
+    private String mathScore;
 
     @ExcelProperty(value = "英语")
-    private Double EnglishScore;
+    private String EnglishScore;
 
     @ExcelProperty(value = "物理")
-    private Double physicsScore;
+    private String physicsScore;
 
     @ExcelProperty(value = "化学")
-    private Double chemistryScore;
+    private String chemistryScore;
 
     @ExcelProperty(value = "生物")
-    private Double organismScore;
+    private String organismScore;
 
     @ExcelProperty(value = "地理")
-    private Double geographyScore;
+    private String geographyScore;
     @ExcelProperty(value = "历史")
-    private Double historyScore;
+    private String historyScore;
     @ExcelProperty(value = "政治")
-    private Double politicsScore;
+    private String politicsScore;
 
 
 

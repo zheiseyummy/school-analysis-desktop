@@ -12,6 +12,8 @@
         WHERE
             exam_id = #{examId}
         AND clazz_id = #{clazzId}
+        AND score IS NOT NULL
+        AND (status IS NULL OR status = 'NORMAL')
         GROUP BY
             course_id
     </select>
@@ -21,7 +23,7 @@
             *,
             DENSE_RANK() OVER ( ORDER BY studentScore DESC ) studentRank
         FROM
-            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND clazz_id = #{clazzId} GROUP BY student_id ) score_summary
+            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND clazz_id = #{clazzId} AND score IS NOT NULL AND (status IS NULL OR status = 'NORMAL') AND (NOT EXISTS (SELECT 1 FROM sys_exam_course ec0 WHERE ec0.exam_id = sys_score.exam_id) OR EXISTS (SELECT 1 FROM sys_exam_course ec WHERE ec.exam_id = sys_score.exam_id AND ec.course_id = sys_score.course_id AND ec.count_in_total = 1)) GROUP BY student_id ) score_summary
     </select>
 
     <select id="getStudentSummaryScoreClazzRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
@@ -39,6 +41,9 @@
                 WHERE
                     exam_id = #{examId}
                   AND grade_Id = #{gradeId}
+                  AND score IS NOT NULL
+                  AND (status IS NULL OR status = 'NORMAL')
+                  AND (NOT EXISTS (SELECT 1 FROM sys_exam_course ec0 WHERE ec0.exam_id = sys_score.exam_id) OR EXISTS (SELECT 1 FROM sys_exam_course ec WHERE ec.exam_id = sys_score.exam_id AND ec.course_id = sys_score.course_id AND ec.count_in_total = 1))
                 GROUP BY
                     clazz_id,
                     student_id
@@ -50,7 +55,7 @@
             *,
             DENSE_RANK() OVER ( ORDER BY studentScore DESC ) studentRank
         FROM
-            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND grade_id = #{gradeId} GROUP BY student_id ) score_summary
+            ( SELECT student_id AS studentId, sum( score ) AS studentScore FROM sys_score WHERE exam_id = #{examId} AND grade_id = #{gradeId} AND score IS NOT NULL AND (status IS NULL OR status = 'NORMAL') AND (NOT EXISTS (SELECT 1 FROM sys_exam_course ec0 WHERE ec0.exam_id = sys_score.exam_id) OR EXISTS (SELECT 1 FROM sys_exam_course ec WHERE ec.exam_id = sys_score.exam_id AND ec.course_id = sys_score.course_id AND ec.count_in_total = 1)) GROUP BY student_id ) score_summary
     </select>
 
     <select id="getStudentCourseScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
@@ -64,7 +69,9 @@
             sys_score
         WHERE
             exam_id = #{examId}
-          AND clazz_id = #{clazzId};
+          AND clazz_id = #{clazzId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL');
     </select>
 
     <select id="getStudentCourseScoreClazzRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
@@ -79,7 +86,9 @@
             sys_score
         WHERE
             exam_id = #{examId}
-          AND grade_id = #{gradeId};
+          AND grade_id = #{gradeId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL');
     </select>
 
     <select id="getGradeStudentCourseScoreRanking" resultType="com.youlai.system.model.bo.StudentScoreRankingBO">
@@ -93,7 +102,9 @@
             sys_score
         WHERE
             exam_id = #{examId}
-          AND grade_id = #{gradeId};
+          AND grade_id = #{gradeId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL');
     </select>
 
     <select id="getCourseStaticsList" resultType="com.youlai.system.model.bo.CourseStaticsBO">
@@ -112,6 +123,8 @@
         WHERE
             exam_id = #{examId}
           AND clazz_id = #{clazzId}
+          AND score IS NOT NULL
+            AND (status IS NULL OR status = 'NORMAL')
         GROUP BY
             course_id;
     </select>
@@ -132,6 +145,8 @@
         WHERE
             exam_id = #{examId}
           AND grade_id = #{gradeId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL')
         GROUP BY
             course_id;
     </select>
@@ -152,6 +167,8 @@
         WHERE
             exam_id = #{examId}
           AND grade_id = #{gradeId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL')
         GROUP BY
             clazz_id;
     </select>
@@ -173,6 +190,8 @@
         WHERE
             exam_id = #{examId}
           AND grade_id = #{gradeId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL')
         GROUP BY
             course_id,
             clazz_id order by course_id;
@@ -186,6 +205,9 @@
             sys_score
         WHERE
             student_id = #{studentId}
+          AND score IS NOT NULL
+          AND (status IS NULL OR status = 'NORMAL')
+          AND (NOT EXISTS (SELECT 1 FROM sys_exam_course ec0 WHERE ec0.exam_id = sys_score.exam_id) OR EXISTS (SELECT 1 FROM sys_exam_course ec WHERE ec.exam_id = sys_score.exam_id AND ec.course_id = sys_score.course_id AND ec.count_in_total = 1))
         GROUP BY
             exam_id
     </select>

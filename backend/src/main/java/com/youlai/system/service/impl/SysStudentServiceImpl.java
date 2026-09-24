@@ -83,7 +83,7 @@ public class SysStudentServiceImpl extends ServiceImpl<SysStudentMapper, SysStud
 
         // 实体转换
         SysStudent student = studentConverter.form2Entity(studentForm);
-        // Compatibility only: the transitional MySQL schema requires these columns.
+        // Legacy schema columns remain non-functional; local records still need safe placeholders.
         student.setAccount("local_" + UUID.randomUUID());
         student.setPassword("!LOCAL_ONLY!");
         Boolean flag = save(student);

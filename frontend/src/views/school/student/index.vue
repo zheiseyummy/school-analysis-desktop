@@ -15,8 +15,17 @@ import {
 } from "@/api/student";
 
 import { StudentQuery, StudentPageVO, StudentForm } from "@/api/student/types";
+import {
+  getStudentFollowups,
+  addStudentFollowup,
+  updateStudentFollowup,
+  deleteStudentFollowup,
+} from "@/api/student-followup";
+import {
+  StudentFollowup,
+  StudentFollowupForm,
+} from "@/api/student-followup/types";
 import type { UploadFile } from "element-plus";
-import { uploadFileApi } from "@/api/file";
 import { getComplexClazzOptions } from "@/api/clazz";
 
 import type { UploadInstance } from "element-plus";
@@ -27,6 +36,7 @@ const complexClazzList = ref<OptionType[]>(); //携带年级的班级下拉数�
 
 const queryFormRef = ref(ElForm);
 const studentFormRef = ref(ElForm);
+const followupFormRef = ref(ElForm);
 
 const loading = ref(false);
 const ids = ref<number[]>([]);
@@ -179,10 +189,84 @@ function resetForm() {
   studentFormRef.value.clearValidate();
 
   formData.id = undefined;
-  formData.avatar = undefined;
   formData.clazzList = [];
   formData.sort = 1;
   formData.status = 1;
+}
+
+function openFollowupDialog(row: StudentPageVO) {
+  if (!row.id) return;
+  selectedStudent.value = row;
+  followupDialog.visible = true;
+  followupLoading.value = true;
+  getStudentFollowups(row.id)
+    .then(({ data }) => (followupList.value = data))
+    .finally(() => (followupLoading.value = false));
+}
+
+function resetFollowupForm() {
+  followupFormRef.value?.resetFields?.();
+  followupFormRef.value?.clearValidate?.();
+  followupForm.learningStatus = "正常学习";
+  followupForm.specialSituation = "";
+  followupForm.followupContent = "";
+  followupForm.nextAction = "";
+  followupForm.followupDate = new Date().toISOString().slice(0, 10);
+}
+
+function openFollowupForm(row?: StudentFollowup) {
+  resetFollowupForm();
+  if (row) {
+    followupFormDialog.title = "编辑跟进记录";
+    Object.assign(followupForm, {
+      learningStatus: row.learningStatus,
+      specialSituation: row.specialSituation ?? "",
+      followupContent: row.followupContent,
+      nextAction: row.nextAction ?? "",
+      followupDate: row.followupDate,
+    });
+  } else {
+    followupFormDialog.title = "新增跟进记录";
+  }
+  followupFormDialog.visible = true;
+  (followupForm as StudentFollowupForm & { id?: number }).id = row?.id;
+}
+
+function handleFollowupSubmit() {
+  followupFormRef.value.validate((valid: boolean) => {
+    if (!valid || !selectedStudent.value.id) return;
+    followupLoading.value = true;
+    const id = (followupForm as StudentFollowupForm & { id?: number }).id;
+    const request = id
+      ? updateStudentFollowup(id, followupForm)
+      : addStudentFollowup(selectedStudent.value.id, followupForm);
+    request
+      .then(() => {
+        ElMessage.success(id ? "跟进记录已更新" : "跟进记录已添加");
+        followupFormDialog.visible = false;
+        return getStudentFollowups(selectedStudent.value.id!);
+      })
+      .then(({ data }) => (followupList.value = data))
+      .finally(() => (followupLoading.value = false));
+  });
+}
+
+function handleFollowupDelete(row: StudentFollowup) {
+  if (!row.id) return;
+  ElMessageBox.confirm("确认删除这条跟进记录吗？", "提示", {
+    type: "warning",
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+  }).then(() => {
+    followupLoading.value = true;
+    deleteStudentFollowup(row.id!)
+      .then(() => {
+        ElMessage.success("跟进记录已删除");
+        return getStudentFollowups(selectedStudent.value.id!);
+      })
+      .then(({ data }) => (followupList.value = data))
+      .finally(() => (followupLoading.value = false));
+  });
 }
 
 /** 删除学生 */
@@ -208,12 +292,6 @@ function handleDelete(studentId?: number) {
   });
 }
 
-async function onChange(file: UploadFile) {
-  uploadFileApi(file.raw as File).then(({ data }) => {
-    formData.avatar = data.url;
-  });
-}
-
 const addItem = () => {
   (formData.clazzList ??= []).push({
     clazzId: undefined,
@@ -228,6 +306,30 @@ const deleteItem = (index: number) => {
 const importData = reactive<{ file?: File; fileList: UploadFile[] }>({
   file: undefined,
   fileList: [],
+});
+
+const followupDialog = reactive({ visible: false, title: "学生跟进记录" });
+const followupFormDialog = reactive({ visible: false, title: "新增跟进记录" });
+const followupLoading = ref(false);
+const followupList = ref<StudentFollowup[]>([]);
+const selectedStudent = ref<StudentPageVO>({});
+const followupForm = reactive<StudentFollowupForm>({
+  learningStatus: "正常学习",
+  specialSituation: "",
+  followupContent: "",
+  nextAction: "",
+  followupDate: new Date().toISOString().slice(0, 10),
+});
+const followupRules = reactive({
+  learningStatus: [
+    { required: true, message: "请选择学习状态", trigger: "change" },
+  ],
+  followupContent: [
+    { required: true, message: "请输入跟进记录", trigger: "blur" },
+  ],
+  followupDate: [
+    { required: true, message: "请选择跟进日期", trigger: "change" },
+  ],
 });
 
 /** 下载导入模板 */
@@ -387,84 +489,84 @@ onMounted(() => {
           </div>
         </div>
       </template>
-      <div class="images" v-viewer>
-        <el-table
-          ref="dataTableRef"
-          v-loading="loading"
-          :data="studentList"
-          highlight-current-row
-          border
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="55" align="center" />
-          <el-table-column label="头像" align="center" prop="avatar" width="60">
-            <template #default="scope">
-              <img :src="scope.row.avatar" class="user-avatar" />
-            </template>
-          </el-table-column>
-          <el-table-column
-            align="center"
-            label="学生学号"
-            prop="code"
-            width="120"
-          />
-          <el-table-column label="学生姓名" prop="name" width="150" />
-          <el-table-column
-            label="性别"
-            align="center"
-            prop="sexLabel"
-            width="60"
-          />
-          <el-table-column
-            label="出生日期"
-            align="center"
-            prop="birthDay"
-            width="100"
-          />
-          <el-table-column label="年龄" align="center" prop="age" width="100" />
-          <!-- <el-table-column label="电话" prop="phone" /> -->
-          <el-table-column
-            label="入学年份"
-            prop="year"
-            align="center"
-            width="90"
-          />
-          <el-table-column align="center" label="班级列表" width="180">
-            <template #default="scope">
-              <span v-html="scope.row.clazzNameList"></span>
-            </template>
-          </el-table-column>
-          <el-table-column label="备注" prop="remark" />
-          <!-- <el-table-column label="创建时间" prop="createTime" /> -->
-          <!-- <el-table-column label="班级数量" prop="clazzCount" width="90" /> -->
-          <el-table-column label="状态" align="center" width="100">
-            <template #default="scope">
-              <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-              <el-tag v-else type="info">禁用</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column fixed="right" label="操作" width="160">
-            <template #default="scope">
-              <el-button
-                type="primary"
-                size="small"
-                link
-                @click="openDialog('student-form', scope.row.id)"
-              >
-                <i-ep-edit />编辑
-              </el-button>
-              <el-button
-                type="primary"
-                size="small"
-                link
-                @click="handleDelete(scope.row.id)"
-              >
-                <i-ep-delete />删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+      <el-table
+        ref="dataTableRef"
+        v-loading="loading"
+        :data="studentList"
+        highlight-current-row
+        border
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column
+          align="center"
+          label="学生学号"
+          prop="code"
+          width="120"
+        />
+        <el-table-column label="学生姓名" prop="name" width="150" />
+        <el-table-column
+          label="性别"
+          align="center"
+          prop="sexLabel"
+          width="60"
+        />
+        <el-table-column
+          label="出生日期"
+          align="center"
+          prop="birthDay"
+          width="100"
+        />
+        <!-- <el-table-column label="电话" prop="phone" /> -->
+        <el-table-column
+          label="入学年份"
+          prop="year"
+          align="center"
+          width="90"
+        />
+        <el-table-column align="center" label="班级列表" width="180">
+          <template #default="scope">
+            <span v-html="scope.row.clazzNameList"></span>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" prop="remark" />
+        <!-- <el-table-column label="创建时间" prop="createTime" /> -->
+        <!-- <el-table-column label="班级数量" prop="clazzCount" width="90" /> -->
+        <el-table-column label="状态" align="center" width="100">
+          <template #default="scope">
+            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
+            <el-tag v-else type="info">禁用</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" label="操作" width="230">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="openFollowupDialog(scope.row)"
+            >
+              <i-ep-chat-line-round />跟进
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="openDialog('student-form', scope.row.id)"
+            >
+              <i-ep-edit />编辑
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="handleDelete(scope.row.id)"
+            >
+              <i-ep-delete />删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
       <pagination
         v-if="total > 0"
         v-model:total="total"
@@ -489,49 +591,15 @@ onMounted(() => {
         label-width="100px"
       >
         <el-row>
-          <el-col :span="6">
-            <el-form-item label="个人头像">
-              <el-upload
-                ref="upload"
-                class="avatar-uploader"
-                action="javascript:void(0);"
-                :show-file-list="false"
-                :auto-upload="false"
-                :on-change="onChange"
-                accept="image/*"
-              >
-                <el-icon class="avatar-uploader-icon"><Plus /></el-icon>
-              </el-upload>
+          <el-col :span="12">
+            <el-form-item label="学生学号" prop="code">
+              <el-input v-model="formData.code" placeholder="请输入学生学号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
-            <div class="images" v-viewer>
-              <img
-                v-if="formData.avatar"
-                :src="formData.avatar"
-                class="avatar"
-              />
-            </div>
-          </el-col>
           <el-col :span="12">
-            <el-row>
-              <el-col :span="24">
-                <el-form-item label="学生学号" prop="code">
-                  <el-input
-                    v-model="formData.code"
-                    placeholder="请输入学生学号"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="24">
-                <el-form-item label="学生姓名" prop="name">
-                  <el-input
-                    v-model="formData.name"
-                    placeholder="请输入学生姓名"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <el-form-item label="学生姓名" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入学生姓名" />
+            </el-form-item>
           </el-col>
         </el-row>
 
@@ -693,41 +761,153 @@ onMounted(() => {
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="followupDialog.visible"
+      :title="`【${selectedStudent.name || ''}】学习跟进`"
+      width="980px"
+    >
+      <div class="followup-toolbar">
+        <div class="followup-summary">
+          学号：{{ selectedStudent.code || "-" }}　学生备注：{{
+            selectedStudent.remark || "暂无"
+          }}
+        </div>
+        <el-button type="primary" @click="openFollowupForm()">
+          <i-ep-plus />新增跟进
+        </el-button>
+      </div>
+      <el-table v-loading="followupLoading" :data="followupList" border stripe>
+        <el-table-column label="日期" prop="followupDate" width="120" />
+        <el-table-column label="学习状态" prop="learningStatus" width="120">
+          <template #default="scope">
+            <el-tag
+              :type="
+                scope.row.learningStatus === '正常学习' ? 'success' : 'warning'
+              "
+            >
+              {{ scope.row.learningStatus }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="特殊情况"
+          prop="specialSituation"
+          min-width="180"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          label="跟进记录"
+          prop="followupContent"
+          min-width="260"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          label="下一步"
+          prop="nextAction"
+          min-width="180"
+          show-overflow-tooltip
+        />
+        <el-table-column label="操作" width="130" fixed="right">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              link
+              @click="openFollowupForm(scope.row as StudentFollowup)"
+              >编辑</el-button
+            >
+            <el-button
+              type="danger"
+              link
+              @click="handleFollowupDelete(scope.row as StudentFollowup)"
+              >删除</el-button
+            >
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="followupDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="followupFormDialog.visible"
+      :title="followupFormDialog.title"
+      width="620px"
+    >
+      <el-form
+        ref="followupFormRef"
+        :model="followupForm"
+        :rules="followupRules"
+        label-width="100px"
+      >
+        <el-form-item label="学习状态" prop="learningStatus">
+          <el-select
+            v-model="followupForm.learningStatus"
+            placeholder="请选择学习状态"
+            style="width: 100%"
+          >
+            <el-option label="正常学习" value="正常学习" />
+            <el-option label="需要关注" value="需要关注" />
+            <el-option label="重点跟进" value="重点跟进" />
+            <el-option label="暂未评估" value="暂未评估" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="特殊情况" prop="specialSituation">
+          <el-input
+            v-model="followupForm.specialSituation"
+            type="textarea"
+            :rows="2"
+            placeholder="可填写家庭、健康、出勤或其他需要关注的情况"
+          />
+        </el-form-item>
+        <el-form-item label="跟进记录" prop="followupContent">
+          <el-input
+            v-model="followupForm.followupContent"
+            type="textarea"
+            :rows="4"
+            placeholder="记录本次沟通、辅导或观察情况"
+          />
+        </el-form-item>
+        <el-form-item label="下一步" prop="nextAction">
+          <el-input
+            v-model="followupForm.nextAction"
+            type="textarea"
+            :rows="2"
+            placeholder="填写下一次跟进计划"
+          />
+        </el-form-item>
+        <el-form-item label="跟进日期" prop="followupDate">
+          <el-date-picker
+            v-model="followupForm.followupDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="请选择日期"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button
+          type="primary"
+          :loading="followupLoading"
+          @click="handleFollowupSubmit"
+          >保存</el-button
+        >
+        <el-button @click="followupFormDialog.visible = false">取消</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <style>
-.avatar-uploader .el-upload {
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 6px;
-  transition: var(--el-transition-duration-fast);
+.followup-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-.avatar-uploader .el-upload:hover {
-  border-color: var(--el-color-primary);
-}
-
-.el-icon.avatar-uploader-icon {
-  width: 96px;
-  height: 96px;
-  font-size: 28px;
-  color: #8c939d;
-  text-align: center;
-}
-
-.avatar {
-  display: block;
-  width: 96px;
-  height: 96px;
-  margin-left: 15px;
-}
-
-.user-avatar {
-  display: block;
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+.followup-summary {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 </style>

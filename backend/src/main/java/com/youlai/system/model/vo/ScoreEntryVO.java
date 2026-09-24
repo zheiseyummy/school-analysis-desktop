@@ -21,4 +21,7 @@ public class ScoreEntryVO {
 
     @Schema(description = "分数")
     private Double score;
+
+    /** NORMAL=正常分数，ABSENT=缺考，NOT_SELECTED=未选科。 */
+    private String status;
 }

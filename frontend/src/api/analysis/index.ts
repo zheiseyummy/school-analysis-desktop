@@ -4,7 +4,36 @@ import {
   ClazzExamAnalysisQuery,
   StudentScoreAnalysisQuery,
   ExamScoreBO,
+  CourseAnalysisQuery,
 } from "./types";
+
+export function getCourseAnalysisData(
+  queryParams: CourseAnalysisQuery
+): AxiosPromise<any> {
+  return request({
+    url: "/api/v1/analysis/courseAnalysisData",
+    method: "get",
+    params: queryParams,
+  });
+}
+
+export function getCourseAnalysisToExcel(queryParams: CourseAnalysisQuery) {
+  return request({
+    url: "/api/v1/analysis/courseAnalysisToExcel",
+    method: "get",
+    params: queryParams,
+    responseType: "arraybuffer",
+  });
+}
+
+export function getCourseAnalysisToPdf(queryParams: CourseAnalysisQuery) {
+  return request({
+    url: "/api/v1/analysis/courseAnalysisToPdf",
+    method: "get",
+    params: queryParams,
+    responseType: "arraybuffer",
+  });
+}
 
 /**
  * 获取班级考试维度分析数据

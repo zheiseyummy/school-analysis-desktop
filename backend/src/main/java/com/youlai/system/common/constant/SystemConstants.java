@@ -29,5 +29,5 @@ public interface SystemConstants {
      */
     String DICT_TYPE_SCORE_DEGREE = "scoreDegree";
 
-    String BRAND_NAME = "初中学情分析系统";
+    String BRAND_NAME = "成绩分析系统";
 }

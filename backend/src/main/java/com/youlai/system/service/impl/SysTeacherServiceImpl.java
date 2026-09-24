@@ -66,7 +66,7 @@ public class SysTeacherServiceImpl extends ServiceImpl<SysTeacherMapper, SysTeac
 
         // 实体转换
         SysTeacher teacher = teacherConverter.form2Entity(teacherForm);
-        // Compatibility only: the transitional MySQL schema requires these columns.
+        // Legacy schema columns remain non-functional; local records still need safe placeholders.
         teacher.setAccount("local_" + UUID.randomUUID());
         teacher.setPassword("!LOCAL_ONLY!");
         boolean saved = save(teacher);

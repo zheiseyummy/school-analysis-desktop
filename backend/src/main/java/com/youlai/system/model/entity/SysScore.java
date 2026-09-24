@@ -63,6 +63,12 @@ public class SysScore extends BaseEntity {
      */
     private Double score;
 
+    /** 赋分结果；原始分仍保存在 score，具体算法确认后再写入。 */
+    private Double scaledScore;
+
+    /** NORMAL=正常分数（包括 0 分），ABSENT=缺考，NOT_SELECTED=未选科。 */
+    private String status;
+
     /**
      * 等级
      */

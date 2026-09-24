@@ -122,3 +122,15 @@ export interface ExamForm {
    */
   semester?: number;
 }
+
+export interface ExamCourseConfig {
+  courseId: number;
+  courseName: string;
+  defaultFullScore?: number;
+  fullScore?: number;
+  countInTotal: number;
+  scoreMode?: "ORIGINAL" | "SCALED";
+  scoringRuleId?: number;
+  sort?: number;
+  selected: boolean;
+}

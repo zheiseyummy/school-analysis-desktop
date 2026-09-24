@@ -11,9 +11,11 @@ import com.youlai.system.common.result.Result;
 import com.youlai.system.model.entity.SysClazz;
 import com.youlai.system.model.entity.SysGrade;
 import com.youlai.system.model.form.ExamForm;
+import com.youlai.system.model.form.ExamCourseConfigForm;
 import com.youlai.system.model.query.ClazzExamAnalysisQuery;
 import com.youlai.system.model.query.ExamPageQuery;
 import com.youlai.system.model.vo.ExamPageVO;
+import com.youlai.system.model.vo.ExamCourseConfigVO;
 import com.youlai.system.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -49,6 +51,8 @@ public class SysExamController {
     private final SysGradeService gradeService;
 
     private final SysClazzService clazzService;
+
+    private final SysExamCourseService examCourseService;
 
 
     @Operation(summary = "考试分页列表")
@@ -119,6 +123,18 @@ public class SysExamController {
     public Result updateExam(@Parameter(description = "考试ID") @PathVariable Long examId, @RequestBody @Validated ExamForm examForm) {
         boolean result = examService.updateExam(examId, examForm);
         return Result.judge(result);
+    }
+
+    @Operation(summary = "获取考试科目及计分配置")
+    @GetMapping("/{examId}/courses")
+    public Result<List<ExamCourseConfigVO>> getExamCourseConfig(@PathVariable Long examId) {
+        return Result.success(examCourseService.getConfig(examId));
+    }
+
+    @Operation(summary = "保存考试科目及计分配置")
+    @PutMapping("/{examId}/courses")
+    public Result saveExamCourseConfig(@PathVariable Long examId, @RequestBody @Valid List<ExamCourseConfigForm> forms) {
+        return Result.judge(examCourseService.saveConfig(examId, forms));
     }
 
     @Operation(summary = "删除考试")

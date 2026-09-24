@@ -22,6 +22,7 @@ export interface GradePageVO {
    * 年级名称
    */
   name?: string;
+  stage?: string;
   /**
    * 排序
    */
@@ -75,6 +76,7 @@ export interface GradeForm {
    * 年级名称
    */
   name: string;
+  stage?: "初中" | "高中";
 
   /**
    * 管理者

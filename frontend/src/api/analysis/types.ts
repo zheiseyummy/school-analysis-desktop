@@ -35,6 +35,33 @@ export interface ClazzExamAnalysisQuery {
   courseId?: number;
 }
 
+export interface CourseAnalysisQuery {
+  gradeId?: number;
+  clazzId?: number;
+  examId?: number;
+  courseId?: number;
+}
+
+export interface CourseAnalysisRow {
+  studentId?: number;
+  studentCode?: string;
+  studentName?: string;
+  clazzName?: string;
+  score?: number | null;
+  status?: string;
+  statusLabel?: string;
+  percent?: number | null;
+  rank?: number | null;
+}
+
+export interface CourseAnalysisResult {
+  title?: string;
+  scopeName?: string;
+  fullScore?: number;
+  summary?: Record<string, any>;
+  rows?: CourseAnalysisRow[];
+}
+
 interface Statics {
   /**
    * 最高分
