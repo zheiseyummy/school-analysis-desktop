@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -635,6 +636,7 @@ public class BusinessServiceImpl implements BusinessService {
             examScoreVO.setScore(score.getScore());
             examScoreVOList.add(examScoreVO);
         });
+        examScoreVOList.sort(Comparator.comparing(ExamScoreVO::getExamDate, Comparator.nullsLast(Comparator.naturalOrder())));
         resultMap.put("examScoreList", examScoreVOList);
         return resultMap;
     }
