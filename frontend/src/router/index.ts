@@ -120,6 +120,21 @@ export const constantRoutes: RouteRecordRaw[] = [
     children: [{ path: "evaluation", name: "QualityEvaluationPage", component: () => import("@/views/quality/index.vue"), meta: { title: "综合素质评价", icon: "edit", keepAlive: true } }],
   },
   {
+    path: "/data",
+    name: "DataTools",
+    component: Layout,
+    redirect: "/data/backup",
+    meta: { title: "数据工具", icon: "folder", alwaysShow: true },
+    children: [
+      {
+        path: "backup",
+        name: "DataBackup",
+        component: () => import("@/views/data/backup/index.vue"),
+        meta: { title: "数据备份", icon: "database", keepAlive: true },
+      },
+    ],
+  },
+  {
     path: "/404",
     component: () => import("@/views/error-page/404.vue"),
     meta: { hidden: true },
