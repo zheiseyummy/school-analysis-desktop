@@ -25,8 +25,8 @@
             seb.g_or_c = 'C'
             <if test='queryParams.keywords!=null and queryParams.keywords.trim() neq ""'>
                 AND (
-                se.name LIKE CONCAT('%',#{queryParams.keywords},'%')
-                OR se.code LIKE CONCAT('%',#{queryParams.keywords},'%')
+                se.name LIKE '%' || #{queryParams.keywords} || '%'
+                OR se.code LIKE '%' || #{queryParams.keywords} || '%'
                 )
             </if>
             <if test='queryParams.year!=null'>

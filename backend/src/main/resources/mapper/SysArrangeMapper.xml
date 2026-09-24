@@ -38,8 +38,7 @@
         SELECT
             sa.clazz_id AS clazzId,
             count(sa.id) as arrangeCount,
-            GROUP_CONCAT(
-                    CONCAT('(', scs.`name`, '/', st.`name`, ')')) as arrangeNameList
+            GROUP_CONCAT('(' || scs.`name` || '/' || st.`name` || ')') as arrangeNameList
         FROM
             sys_arrange sa
                 LEFT JOIN sys_clazz sc ON sa.clazz_id = sc.id
