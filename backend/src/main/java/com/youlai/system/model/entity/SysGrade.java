@@ -29,6 +29,9 @@ public class SysGrade extends BaseEntity {
      */
     private String name;
 
+    /** 学段：初中/高中 */
+    private String stage;
+
 
     /**
      * 显示顺序

@@ -7,6 +7,7 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 
 /** Initializes the portable SQLite schema only when the production datasource is SQLite. */
 @Component
@@ -23,5 +24,10 @@ public class SqliteSchemaConfig {
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
         populator.addScript(new ClassPathResource("schema.sql"));
         populator.execute(dataSource);
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            try { statement.execute("ALTER TABLE sys_grade ADD COLUMN stage TEXT DEFAULT '高中'"); } catch (SQLException ignored) { }
+        } catch (SQLException e) {
+            throw new IllegalStateException("SQLite schema migration failed", e);
+        }
     }
 }

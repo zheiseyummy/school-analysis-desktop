@@ -3,7 +3,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS sys_grade (
   id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, name TEXT NOT NULL,
-  sort INTEGER DEFAULT 0, status INTEGER DEFAULT 1, manager_id INTEGER,
+  sort INTEGER DEFAULT 0, status INTEGER DEFAULT 1, manager_id INTEGER, stage TEXT DEFAULT '高中',
   deleted INTEGER DEFAULT 0, create_time TEXT, update_time TEXT
 );
 CREATE TABLE IF NOT EXISTS sys_clazz (
@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS sys_exam_body (
   id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL,
   grade_clazz_id INTEGER NOT NULL, g_or_c TEXT
 );
+CREATE TABLE IF NOT EXISTS sys_exam_course (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL, course_id INTEGER NOT NULL,
+  full_score REAL, sort INTEGER DEFAULT 0, UNIQUE(exam_id, course_id)
+);
 CREATE TABLE IF NOT EXISTS sys_score (
   id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL, grade_id INTEGER,
   grade_name TEXT, clazz_id INTEGER, clazz_name TEXT, student_id INTEGER NOT NULL,
@@ -71,5 +75,6 @@ CREATE INDEX IF NOT EXISTS idx_score_exam_course ON sys_score(exam_id, course_id
 CREATE INDEX IF NOT EXISTS idx_score_exam_grade_clazz ON sys_score(exam_id, grade_id, clazz_id);
 CREATE INDEX IF NOT EXISTS idx_score_student_course ON sys_score(student_id, course_id, exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_body_exam_clazz ON sys_exam_body(exam_id, grade_clazz_id);
+CREATE INDEX IF NOT EXISTS idx_exam_course_exam ON sys_exam_course(exam_id, course_id);
 CREATE INDEX IF NOT EXISTS idx_clazz_student_student ON sys_clazz_student(student_id, year);
 CREATE INDEX IF NOT EXISTS idx_clazz_student_clazz ON sys_clazz_student(clazz_id, year);
