@@ -10,6 +10,7 @@ import {
   getExamBodyScorePreview,
   downloadTemplateApi,
   importScore,
+  getScoreImportStatus,
 } from "@/api/exam_body";
 
 import {
@@ -293,10 +294,22 @@ const handleScoreImportSubmit = useThrottleFn(() => {
         ElMessage.warning("上传Excel文件不能为空");
         return false;
       }
-      importScore(importData?.examId, importData?.file).then((response) => {
-        ElMessage.success(response.data);
-        closeScoreImportDialog();
-        resetQuery();
+      getScoreImportStatus(importData.examId).then(({ data }) => {
+        const confirmImport = () =>
+          importScore(importData.examId!, importData.file!).then((response) => {
+            ElMessage.success(response.data);
+            closeScoreImportDialog();
+            resetQuery();
+          });
+        if (data.hasExistingScores) {
+          ElMessageBox.confirm(
+            `该考试已有 ${data.scoreCount} 条成绩，继续导入将更新已有记录，是否确认？`,
+            "确认重新导入",
+            { type: "warning", confirmButtonText: "确认导入", cancelButtonText: "取消" }
+          ).then(confirmImport);
+        } else {
+          confirmImport();
+        }
       });
     }
   });

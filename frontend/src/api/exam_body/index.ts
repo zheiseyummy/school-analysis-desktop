@@ -94,3 +94,11 @@ export function importScore(examId: number, file: File) {
     },
   });
 }
+
+export function getScoreImportStatus(examId: number): AxiosPromise<{ scoreCount: number; hasExistingScores: boolean }> {
+  return request({
+    url: "/api/v1/exam_body_s/import/status",
+    method: "get",
+    params: { examId },
+  });
+}

@@ -135,6 +135,17 @@ public class ExamBodyController {
     }
 
     @Operation(summary = "导入成绩")
+    @GetMapping("/import/status")
+    public Result<Map<String, Object>> getImportStatus(@RequestParam Long examId) {
+        long scoreCount = scoreService.count(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.youlai.system.model.entity.SysScore>()
+                .eq(com.youlai.system.model.entity.SysScore::getExamId, examId));
+        Map<String, Object> status = new java.util.HashMap<>();
+        status.put("scoreCount", scoreCount);
+        status.put("hasExistingScores", scoreCount > 0);
+        return Result.success(status);
+    }
+
+    @Operation(summary = "导入成绩")
     @PostMapping("/_import")
     public Result importScores(@Parameter(description = "考试ID") Long examId, MultipartFile file) throws IOException {
         ScoreImportListener listener = new ScoreImportListener(examId);
