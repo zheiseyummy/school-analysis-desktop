@@ -125,3 +125,7 @@ export function getProgressBands(params: { gradeId: number; currentExamId: numbe
 export function getStudentBiasAnalysis(params: { gradeId: number; examId: number }): AxiosPromise<any> {
   return request({ url: "/api/v1/analysis/studentBiasAnalysis", method: "get", params });
 }
+
+export function exportStudentHistory(params: { gradeId: number; examIds: string }) {
+  return request({ url: "/api/v1/analysis/studentHistoryToExcel", method: "get", params, responseType: "arraybuffer" });
+}
