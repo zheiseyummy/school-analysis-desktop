@@ -208,6 +208,55 @@ public class AnalysisController {
         return Result.success(result);
     }
 
+    @Operation(summary = "年级历次考试对比")
+    @GetMapping("/gradeExamTrend")
+    public Result<List<Map<String, Object>>> gradeExamTrend(Long gradeId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        examService.list().stream()
+                .sorted((a, b) -> {
+                    String left = a.getExamDate() == null ? "" : a.getExamDate().toString();
+                    String right = b.getExamDate() == null ? "" : b.getExamDate().toString();
+                    return left.compareTo(right);
+                })
+                .forEach(exam -> {
+                    List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(exam.getId(), gradeId);
+                    if (!scores.isEmpty()) result.add(buildExamTrendRow(exam, scores));
+                });
+        return Result.success(result);
+    }
+
+    @Operation(summary = "班级历次考试对比")
+    @GetMapping("/clazzExamTrend")
+    public Result<List<Map<String, Object>>> clazzExamTrend(Long clazzId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        examService.list().stream()
+                .sorted((a, b) -> {
+                    String left = a.getExamDate() == null ? "" : a.getExamDate().toString();
+                    String right = b.getExamDate() == null ? "" : b.getExamDate().toString();
+                    return left.compareTo(right);
+                })
+                .forEach(exam -> {
+                    List<SysScore> scores = scoreService.getScoreListByExamIdAndClazzId(exam.getId(), clazzId);
+                    if (!scores.isEmpty()) result.add(buildExamTrendRow(exam, scores));
+                });
+        return Result.success(result);
+    }
+
+    private Map<String, Object> buildExamTrendRow(SysExam exam, List<SysScore> scores) {
+        Map<Long, Double> totals = scores.stream().filter(s -> s.getScore() != null)
+                .collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore)));
+        List<Double> values = totals.values().stream().toList();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("examId", exam.getId());
+        row.put("examName", exam.getName());
+        row.put("examDate", exam.getExamDate());
+        row.put("studentCount", totals.size());
+        row.put("averageScore", values.stream().mapToDouble(Double::doubleValue).average().orElse(0D));
+        row.put("maximumScore", values.stream().mapToDouble(Double::doubleValue).max().orElse(0D));
+        row.put("minimumScore", values.stream().mapToDouble(Double::doubleValue).min().orElse(0D));
+        return row;
+    }
+
     @Operation(summary = "任课教师成绩分析")
     @GetMapping("/teacherAnalysisData")
     public Result<List<Map<String, Object>>> teacherAnalysisData(Long examId, Long gradeId) {
@@ -385,7 +434,9 @@ public class AnalysisController {
         totals.forEach((studentId, total) -> {
             Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, "")); row.put("totalScore", total); row.put("totalRank", totalRanks.get(studentId));
             List<Map<String, Object>> courseRanks = new ArrayList<>();
-            subjects.forEach((courseId, values) -> { if (values.containsKey(studentId)) { Map<Long, Integer> rank = rankMap(values); Map<String, Object> item = new LinkedHashMap<>(); item.put("courseId", courseId); item.put("courseName", courses.get(courseId) == null ? "" : courses.get(courseId).getName()); item.put("score", values.get(studentId)); item.put("rank", rank.get(studentId)); item.put("rankDifference", rank.get(studentId) - totalRanks.get(studentId)); courseRanks.add(item); } });
+            subjects.forEach((courseId, values) -> { if (values.containsKey(studentId)) { Map<Long, Integer> rank = rankMap(values); Map<String, Object> item = new LinkedHashMap<>(); item.put("courseId", courseId); item.put("courseName", courses.get(courseId) == null ? "" : courses.get(courseId).getName()); item.put("score", values.get(studentId)); item.put("rank", rank.get(studentId));
+                // 排名差统一按“总分排名 - 学科排名”计算，正数表示该科排名优于总分排名。
+                item.put("rankDifference", totalRanks.get(studentId) - rank.get(studentId)); courseRanks.add(item); } });
             row.put("courseRanks", courseRanks); result.add(row);
         });
         return Result.success(result);

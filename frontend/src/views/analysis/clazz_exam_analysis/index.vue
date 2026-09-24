@@ -15,6 +15,7 @@ import {
   getClazzExamAnalysisDataToExcel,
   getClazzSubjectWarnings,
   getClazzSubjectProgress,
+  getClazzExamTrend,
 } from "@/api/analysis";
 import { getComplexClazzOptions } from "@/api/clazz";
 import { getOptions } from "@/api/exam";
@@ -39,6 +40,7 @@ const exam = ref<ExamPageVO>({});
 const courseStaticsList = ref<CourseStaticsBO[]>([]);
 const subjectWarnings = ref<any[]>([]);
 const subjectProgress = ref<any[]>([]);
+const clazzTrendList = ref<any[]>([]);
 const previousExamId = ref<number>();
 
 const queryParams = reactive<ClazzExamAnalysisQuery>({});
@@ -85,6 +87,7 @@ function handleQuery() {
           courseStaticsList.value = data.courseStaticsList;
           if (queryParams.clazzId && queryParams.gradeId && queryParams.examId) {
             getClazzSubjectWarnings({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, examId: queryParams.examId }).then(({ data }) => (subjectWarnings.value = data));
+            getClazzExamTrend({ clazzId: queryParams.clazzId }).then(({ data }) => (clazzTrendList.value = data));
             if (previousExamId.value && previousExamId.value !== queryParams.examId) {
               getClazzSubjectProgress({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, currentExamId: queryParams.examId, previousExamId: previousExamId.value }).then(({ data }) => (subjectProgress.value = data));
             } else {
@@ -110,6 +113,7 @@ function handleQuery() {
           clazz.value = {};
           exam.value = {};
           subjectProgress.value = [];
+          clazzTrendList.value = [];
         })
         .finally(() => (loading.value = false));
     }
@@ -181,6 +185,9 @@ function resetQuery() {
   grade.value = {};
   clazz.value = {};
   exam.value = {};
+  subjectWarnings.value = [];
+  subjectProgress.value = [];
+  clazzTrendList.value = [];
   queryFormRef.value.resetFields();
   loadExamOptions();
   renderLeftChart();
@@ -600,6 +607,28 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
           </el-descriptions-item>
         </el-descriptions>
       </template>
+      <el-card v-if="clazzTrendList.length" shadow="never" class="mt-3 trend-card">
+        <template #header>
+          <div class="section-title"><span>班级历次考试对比</span><span class="section-hint">按考试时间查看本班总分变化</span></div>
+        </template>
+        <el-table :data="clazzTrendList" border stripe size="small" row-key="examId">
+          <el-table-column prop="examName" label="考试" min-width="160" />
+          <el-table-column prop="examDate" label="考试日期" min-width="150" />
+          <el-table-column prop="studentCount" label="人数" width="90" />
+          <el-table-column prop="averageScore" label="总分均分" width="110" />
+          <el-table-column prop="maximumScore" label="最高分" width="100" />
+          <el-table-column prop="minimumScore" label="最低分" width="100" />
+          <el-table-column label="较前次均分变化" width="140">
+            <template #default="scope">
+              <span v-if="scope.$index === 0">—</span>
+              <el-tag v-else size="small" :type="scope.row.averageScore - clazzTrendList[scope.$index - 1].averageScore >= 0 ? 'success' : 'danger'">
+                {{ (scope.row.averageScore - clazzTrendList[scope.$index - 1].averageScore).toFixed(2) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+      <el-divider content-position="left">本次考试成绩明细与统计</el-divider>
       <el-row>
         <el-col :span="24">
           <custom-table
@@ -743,6 +772,9 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
   width: 100%;
   height: 400px;
 }
+.section-title { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+.section-hint { color: var(--el-text-color-secondary); font-size: 12px; font-weight: 400; }
+.trend-card :deep(.el-table) { width: 100%; }
 </style>
 <style>
 .item {

@@ -114,6 +114,22 @@ export function getTeacherAnalysisData(params: { examId: number; gradeId: number
   });
 }
 
+export function getGradeExamTrend(params: { gradeId: number }): AxiosPromise<any> {
+  return request({
+    url: "/api/v1/analysis/gradeExamTrend",
+    method: "get",
+    params,
+  });
+}
+
+export function getClazzExamTrend(params: { clazzId: number }): AxiosPromise<any> {
+  return request({
+    url: "/api/v1/analysis/clazzExamTrend",
+    method: "get",
+    params,
+  });
+}
+
 export function getClazzSubjectProgress(params: { clazzId: number; gradeId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
   return request({
     url: "/api/v1/analysis/clazzSubjectProgress",

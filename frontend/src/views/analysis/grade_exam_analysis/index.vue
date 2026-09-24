@@ -11,7 +11,7 @@ defineOptions({
   name: "GradeExamAnalysis",
   inheritAttrs: false,
 });
-import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis, getGradeInsights } from "@/api/analysis";
+import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis, getGradeInsights, getGradeExamTrend } from "@/api/analysis";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -36,6 +36,7 @@ const progressBands = ref<Record<string, any[]>>({});
 const historyExamIds = ref<number[]>([]);
 const biasAnalysisList = ref<any[]>([]);
 const gradeInsights = ref<any>({ classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} });
+const gradeTrendList = ref<any[]>([]);
 /** 加载考试下拉数据源 */
 async function loadExamOptions() {
   getOptions(queryParams).then((response) => {
@@ -71,6 +72,7 @@ function handleQuery() {
           if (previousExamId.value && previousExamId.value !== queryParams.examId) getProgressBands({ gradeId: queryParams.gradeId!, currentExamId: queryParams.examId!, previousExamId: previousExamId.value }).then(({ data }) => (progressBands.value = data));
           getStudentBiasAnalysis({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (biasAnalysisList.value = data));
           getGradeInsights({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (gradeInsights.value = data));
+          getGradeExamTrend({ gradeId: queryParams.gradeId! }).then(({ data }) => (gradeTrendList.value = data));
           grade.value = data.grade;
           exam.value = data.exam;
           renderLeftChart();
@@ -85,6 +87,7 @@ function handleQuery() {
           grade.value = {};
           exam.value = {};
           gradeInsights.value = { classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} };
+          gradeTrendList.value = [];
         })
         .finally(() => (loading.value = false));
     }
@@ -110,6 +113,7 @@ function resetQuery() {
   grade.value = {};
   exam.value = {};
   gradeInsights.value = { classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} };
+  gradeTrendList.value = [];
   queryFormRef.value.resetFields();
   loadExamOptions();
 }
@@ -335,6 +339,28 @@ const renderRightChart = () => {
         </el-row>
         <el-row :gutter="12" class="mt-3"><el-col :span="12"><el-alert title="优秀临界生" type="warning" :closable="false" show-icon><template #default><span v-if="!gradeInsights.excellentCritical?.length">暂无</span><span v-for="item in gradeInsights.excellentCritical" :key="item.studentId" class="critical-item">{{ item.studentName }}（差 {{ Math.abs(item.distanceToExcellent).toFixed(1) }} 分）</span></template></el-alert></el-col><el-col :span="12"><el-alert title="及格临界生" type="info" :closable="false" show-icon><template #default><span v-if="!gradeInsights.passCritical?.length">暂无</span><span v-for="item in gradeInsights.passCritical" :key="item.studentId" class="critical-item">{{ item.studentName }}（差 {{ Math.abs(item.distanceToPass).toFixed(1) }} 分）</span></template></el-alert></el-col></el-row>
       </el-card>
+      <el-card v-if="gradeTrendList.length" shadow="never" class="mt-3 trend-card">
+        <template #header>
+          <div class="section-title"><span>年级历次考试对比</span><span class="section-hint">按考试时间展示总分均分、最高分和最低分</span></div>
+        </template>
+        <el-table :data="gradeTrendList" border stripe size="small" row-key="examId">
+          <el-table-column prop="examName" label="考试" min-width="160" />
+          <el-table-column prop="examDate" label="考试日期" min-width="150" />
+          <el-table-column prop="studentCount" label="人数" width="90" />
+          <el-table-column prop="averageScore" label="总分均分" width="110" />
+          <el-table-column prop="maximumScore" label="最高分" width="100" />
+          <el-table-column prop="minimumScore" label="最低分" width="100" />
+          <el-table-column label="较前次均分变化" width="140">
+            <template #default="scope">
+              <span v-if="scope.$index === 0">—</span>
+              <el-tag v-else size="small" :type="scope.row.averageScore - gradeTrendList[scope.$index - 1].averageScore >= 0 ? 'success' : 'danger'">
+                {{ (scope.row.averageScore - gradeTrendList[scope.$index - 1].averageScore).toFixed(2) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+      <el-divider content-position="left">本次考试成绩明细与统计</el-divider>
       <el-row>
         <el-col :span="24">
           <custom-table
@@ -399,7 +425,23 @@ const renderRightChart = () => {
       </el-row>
       <el-row v-if="biasAnalysisList.length" class="mt-3">
         <el-col :span="24"><el-card shadow="never"><template #header>学生偏科排名差</template>
-          <el-table :data="biasAnalysisList" size="small"><el-table-column prop="studentName" label="学生" /><el-table-column prop="totalScore" label="总分" /><el-table-column prop="totalRank" label="总分排名" /><el-table-column label="学科排名差"><template #default="scope"><span v-for="item in scope.row.courseRanks" :key="item.courseId" style="margin-right:12px">{{ item.courseName }}: {{ item.rankDifference }}</span></template></el-table-column></el-table>
+          <el-table :data="biasAnalysisList" border stripe size="small">
+            <el-table-column prop="studentName" label="学生" width="110" fixed="left" />
+            <el-table-column prop="totalScore" label="总分" width="90" />
+            <el-table-column prop="totalRank" label="总分排名" width="100" />
+            <el-table-column label="学科排名差（总分排名－学科排名）" min-width="420">
+              <template #default="scope">
+                <div class="rank-diff-grid">
+                  <span v-for="item in scope.row.courseRanks" :key="item.courseId" class="rank-diff-item">
+                    <span class="rank-diff-name">{{ item.courseName }}</span>
+                    <el-tag size="small" :type="item.rankDifference > 0 ? 'success' : item.rankDifference < 0 ? 'danger' : 'info'">
+                      {{ item.rankDifference > 0 ? '+' : '' }}{{ item.rankDifference }}
+                    </el-tag>
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </el-card></el-col>
       </el-row>
       <el-row class="mt-3">
@@ -438,6 +480,12 @@ const renderRightChart = () => {
   height: 500px;
 }
 .critical-item { display: inline-block; margin-right: 14px; }
+.section-title { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+.section-hint { color: var(--el-text-color-secondary); font-size: 12px; font-weight: 400; }
+.trend-card :deep(.el-table) { width: 100%; }
+.rank-diff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px 12px; padding: 3px 0; }
+.rank-diff-item { display: inline-flex; align-items: center; justify-content: space-between; gap: 4px; white-space: nowrap; }
+.rank-diff-name { color: var(--el-text-color-regular); }
 </style>
 <style>
 .item {
