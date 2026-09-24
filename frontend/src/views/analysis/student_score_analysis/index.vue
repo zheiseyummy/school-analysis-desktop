@@ -29,6 +29,16 @@ const rules = reactive({
 const courseList = ref<CoursePageVO[]>();
 
 const tabsActiveName = ref();
+const studentOverview = computed(() => {
+  const rows = (tableDataList.value ?? []).filter((row: any) => row.totalScore !== undefined).slice().sort((a: any, b: any) => String(a.examDate ?? "").localeCompare(String(b.examDate ?? "")));
+  const totals = rows.map((row: any) => Number(row.totalScore ?? 0));
+  const courses = (courseList.value ?? []).filter((course: any) => course.id !== -1).map((course: any) => {
+    const scores = rows.map((row: any) => Number(row[`C_${course.id}_Score`])).filter((score: number) => Number.isFinite(score));
+    return { name: course.name, average: scores.length ? scores.reduce((sum: number, score: number) => sum + score, 0) / scores.length : 0 };
+  }).sort((a: any, b: any) => b.average - a.average);
+  const latest = rows[rows.length - 1]; const previous = rows[rows.length - 2];
+  return { rows, average: totals.length ? totals.reduce((sum: number, value: number) => sum + value, 0) / totals.length : 0, maximum: totals.length ? Math.max(...totals) : 0, minimum: totals.length ? Math.min(...totals) : 0, latestChange: latest && previous ? Number(latest.totalScore ?? 0) - Number(previous.totalScore ?? 0) : 0, strongest: courses.slice(0, 3), weakest: courses.slice(-3).reverse() };
+});
 
 /** 加载携带年级信息的班级下拉数据源 */
 async function loadComplexClazzOptions() {
@@ -164,6 +174,20 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
           />
         </el-col>
       </el-row>
+      <el-card v-if="studentOverview.rows.length" shadow="never" class="mt-3">
+        <template #header>学生个人成绩画像</template>
+        <el-descriptions :column="5" border>
+          <el-descriptions-item label="考试次数">{{ studentOverview.rows.length }}</el-descriptions-item>
+          <el-descriptions-item label="平均总分">{{ studentOverview.average.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="最高总分">{{ studentOverview.maximum.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="最低总分">{{ studentOverview.minimum.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="最近变化"><el-tag :type="studentOverview.latestChange >= 0 ? 'success' : 'danger'">{{ studentOverview.latestChange >= 0 ? '+' : '' }}{{ studentOverview.latestChange.toFixed(2) }}</el-tag></el-descriptions-item>
+        </el-descriptions>
+        <el-row :gutter="12" class="mt-3">
+          <el-col :span="12"><el-table :data="studentOverview.rows" border size="small"><el-table-column prop="examName" label="考试" /><el-table-column prop="totalScore" label="总分" /><el-table-column prop="clazzRanking" label="班级排名" /><el-table-column prop="gradeRanking" label="年级排名" /><el-table-column prop="examDate" label="考试日期" /></el-table></el-col>
+          <el-col :span="12"><el-table :data="studentOverview.strongest" border size="small"><el-table-column prop="name" label="优势学科" /><el-table-column prop="average" label="平均分"><template #default="scope">{{ Number(scope.row.average).toFixed(2) }}</template></el-table-column></el-table><el-table :data="studentOverview.weakest" border size="small" class="mt-3"><el-table-column prop="name" label="薄弱学科" /><el-table-column prop="average" label="平均分"><template #default="scope">{{ Number(scope.row.average).toFixed(2) }}</template></el-table-column></el-table></el-col>
+        </el-row>
+      </el-card>
 
       <el-row class="mt-3">
         <el-col :span="24">
