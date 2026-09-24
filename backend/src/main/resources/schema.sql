@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS sys_archives (
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, teacher_id INTEGER,
   admin_id INTEGER, content TEXT, create_time TEXT, update_time TEXT, deleted INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS sys_dict_type (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE,
+  status INTEGER DEFAULT 1, remark TEXT, create_time TEXT, update_time TEXT, deleted INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sys_dict (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, type_code TEXT NOT NULL, name TEXT NOT NULL,
+  value TEXT, sort INTEGER DEFAULT 0, status INTEGER DEFAULT 1, defaulted INTEGER DEFAULT 0,
+  remark TEXT, create_time TEXT, update_time TEXT, deleted INTEGER DEFAULT 0
+);
 
 CREATE INDEX IF NOT EXISTS idx_score_exam_student ON sys_score(exam_id, student_id);
 CREATE INDEX IF NOT EXISTS idx_score_exam_course ON sys_score(exam_id, course_id);
