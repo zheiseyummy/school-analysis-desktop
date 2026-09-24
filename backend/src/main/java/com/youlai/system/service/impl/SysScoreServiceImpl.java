@@ -158,7 +158,7 @@ public class SysScoreServiceImpl extends ServiceImpl<SysScoreMapper, SysScore> i
         LambdaQueryWrapper<SysScore> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysScore::getExamId, examId).eq(SysScore::getStudentId, studentId);
         queryWrapper.select(SysScore::getClazzId);
-        return list(queryWrapper).stream().map(SysScore::getClazzId).distinct().toList().get(0);
+        return list(queryWrapper).stream().map(SysScore::getClazzId).distinct().findFirst().orElse(null);
     }
 
     @Override
@@ -167,7 +167,7 @@ public class SysScoreServiceImpl extends ServiceImpl<SysScoreMapper, SysScore> i
         queryWrapper.eq(SysScore::getExamId, examId).eq(SysScore::getStudentId, studentId);
         queryWrapper.eq(SysScore::getClazzId, clazzId);
         queryWrapper.select(SysScore::getGradeId);
-        return list(queryWrapper).stream().map(SysScore::getGradeId).distinct().toList().get(0);
+        return list(queryWrapper).stream().map(SysScore::getGradeId).distinct().findFirst().orElse(null);
     }
 
     @Override
