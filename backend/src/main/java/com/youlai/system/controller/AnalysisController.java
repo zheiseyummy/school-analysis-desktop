@@ -34,6 +34,7 @@ import org.springframework.web.servlet.ModelAndView;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,7 @@ public class AnalysisController {
     private final SysExamService examService;
     private final SysArrangeService arrangeService;
     private final SysTeacherService teacherService;
+    private final SysStudentService studentService;
 
     @Operation(summary = "班级考试维度数据列表")
     @GetMapping("/clazzExamAnalysisData")
@@ -227,6 +229,27 @@ public class AnalysisController {
             row.put("currentPassRate", passRate(cg.get(courseId))); row.put("previousPassRate", passRate(pg.get(courseId)));
             result.add(row);
         });
+        return Result.success(result);
+    }
+
+    @Operation(summary = "班级学生进退步榜")
+    @GetMapping("/studentProgressRanking")
+    public Result<List<Map<String, Object>>> studentProgressRanking(Long clazzId, Long currentExamId, Long previousExamId) {
+        List<SysScore> current = scoreService.getScoreListByExamIdAndClazzId(currentExamId, clazzId);
+        List<SysScore> previous = scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId);
+        Map<Long, Double> currentMap = current.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> previousMap = previous.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, String> names = new HashMap<>();
+        studentService.listByIds(new ArrayList<>(currentMap.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
+        List<Map<String, Object>> result = new ArrayList<>();
+        currentMap.forEach((studentId, score) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            double old = previousMap.getOrDefault(studentId, 0D);
+            row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, ""));
+            row.put("currentScore", score); row.put("previousScore", old); row.put("scoreChange", score - old);
+            result.add(row);
+        });
+        result.sort((a, b) -> Double.compare((Double) b.get("scoreChange"), (Double) a.get("scoreChange")));
         return Result.success(result);
     }
 
