@@ -11,7 +11,7 @@ defineOptions({
   name: "GradeExamAnalysis",
   inheritAttrs: false,
 });
-import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands } from "@/api/analysis";
+import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis } from "@/api/analysis";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -34,6 +34,7 @@ const teacherAnalysisList = ref<any[]>([]);
 const previousExamId = ref<number>();
 const progressBands = ref<Record<string, any[]>>({});
 const historyExamIds = ref<number[]>([]);
+const biasAnalysisList = ref<any[]>([]);
 /** 加载考试下拉数据源 */
 async function loadExamOptions() {
   getOptions(queryParams).then((response) => {
@@ -67,6 +68,7 @@ function handleQuery() {
           courseClazzStaticsList.value = data.courseClazzStaticsList;
           getTeacherAnalysisData({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (teacherAnalysisList.value = data));
           if (previousExamId.value && previousExamId.value !== queryParams.examId) getProgressBands({ gradeId: queryParams.gradeId!, currentExamId: queryParams.examId!, previousExamId: previousExamId.value }).then(({ data }) => (progressBands.value = data));
+          getStudentBiasAnalysis({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (biasAnalysisList.value = data));
           grade.value = data.grade;
           exam.value = data.exam;
           renderLeftChart();
@@ -373,6 +375,11 @@ const renderRightChart = () => {
               <el-table :data="items" size="small"><el-table-column prop="studentName" label="学生" /><el-table-column prop="currentScore" label="本次总分" /><el-table-column prop="previousScore" label="对比总分" /><el-table-column prop="change" label="变化" /></el-table>
             </el-tab-pane>
           </el-tabs>
+        </el-card></el-col>
+      </el-row>
+      <el-row v-if="biasAnalysisList.length" class="mt-3">
+        <el-col :span="24"><el-card shadow="never"><template #header>学生偏科排名差</template>
+          <el-table :data="biasAnalysisList" size="small"><el-table-column prop="studentName" label="学生" /><el-table-column prop="totalScore" label="总分" /><el-table-column prop="totalRank" label="总分排名" /><el-table-column label="学科排名差"><template #default="scope"><span v-for="item in scope.row.courseRanks" :key="item.courseId" style="margin-right:12px">{{ item.courseName }}: {{ item.rankDifference }}</span></template></el-table-column></el-table>
         </el-card></el-col>
       </el-row>
       <el-row class="mt-3">
