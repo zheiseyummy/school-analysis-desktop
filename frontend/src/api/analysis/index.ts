@@ -186,3 +186,12 @@ export function exportStudentHistory(params: { gradeId: number; examIds: string 
     responseType: "arraybuffer",
   });
 }
+
+export function exportStudentAnalysis(params: { studentId: number }) {
+  return request({
+    url: "/api/v1/analysis/studentAnalysisToExcel",
+    method: "get",
+    params,
+    responseType: "arraybuffer",
+  });
+}

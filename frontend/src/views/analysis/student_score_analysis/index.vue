@@ -2,7 +2,7 @@
 import { StudentScoreAnalysisQuery } from "@/api/analysis/types";
 import { getComplexClazzOptions } from "@/api/clazz";
 import { getStudentOptions } from "@/api/student";
-import { getStudentScoreAnalysisData } from "@/api/analysis/index";
+import { exportStudentAnalysis, getStudentScoreAnalysisData } from "@/api/analysis/index";
 import { CoursePageVO } from "@/api/course/types";
 import { TabsPaneContext } from "element-plus";
 defineOptions({
@@ -84,6 +84,21 @@ function handleQuery() {
   });
 }
 
+function handleExport() {
+  if (!queryParams.studentId || !studentOverview.value.rows.length) return;
+  exportStudentAnalysis({ studentId: queryParams.studentId }).then((response: any) => {
+    const contentDisposition = response.headers?.["content-disposition"] ?? "";
+    const encodedName = contentDisposition.split("filename=")[1]?.replace(/^"|"$/g, "");
+    const fileName = encodedName ? decodeURIComponent(encodedName) : "学生个人分析.xlsx";
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  });
+}
+
 function resetQuery() {
   queryFormRef.value.resetFields();
   columns.value = [];
@@ -161,6 +176,7 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             ><i-ep-search />搜索</el-button
           >
           <el-button @click="resetQuery"><i-ep-refresh />重置</el-button>
+          <el-button type="success" :disabled="!queryParams.studentId || !studentOverview.rows.length" @click="handleExport"><i-ep-download />导出个人分析</el-button>
         </el-form-item>
       </el-form>
     </div>

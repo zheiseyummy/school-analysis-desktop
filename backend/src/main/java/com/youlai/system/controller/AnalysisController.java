@@ -457,6 +457,50 @@ public class AnalysisController {
         ExcelWriter writer = ExcelUtil.getWriter(true); writer.write(rows, true); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"); String suffix = "物理".equals(direction) ? "物理方向" : "历史".equals(direction) ? "历史方向" : "全科"; response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生多次考试综合成绩-" + suffix + ".xlsx", "UTF-8")); writer.flush(response.getOutputStream(), true); writer.close();
     }
 
+    @Operation(summary = "学生个人分析导出")
+    @GetMapping("/studentAnalysisToExcel")
+    public void studentAnalysisToExcel(Long studentId, HttpServletResponse response) throws IOException {
+        if (studentId == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR);
+        }
+        Map<String, Object> analysis = businessService.studentAllScoreSummaryData(studentId);
+        SysStudent student = studentService.getById(studentId);
+        List<SysCourse> courses = (List<SysCourse>) analysis.getOrDefault("courseList", List.of());
+        List<Map<String, Object>> sourceRows = (List<Map<String, Object>>) analysis.getOrDefault("tableDataList", List.of());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Map<String, Object> source : sourceRows) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("学号", student == null ? "" : student.getCode());
+            row.put("姓名", student == null ? "" : student.getName());
+            row.put("年度", source.get("year"));
+            row.put("考试名称", source.get("examName"));
+            row.put("考试日期", source.get("examDate"));
+            row.put("年级", source.get("gradeName"));
+            row.put("班级", source.get("clazzName"));
+            row.put("总分", source.get("totalScore"));
+            row.put("班级排名", source.get("clazzRanking"));
+            row.put("年级排名", source.get("gradeRanking"));
+            for (SysCourse course : courses) {
+                if (course == null || course.getId() == null || course.getId() == -1L) continue;
+                row.put(course.getName() + "成绩", cleanExportValue(source.get("C_" + course.getId() + "_Score")));
+                row.put(course.getName() + "班级排名", source.get("C_" + course.getId() + "_ClazzRanking"));
+                row.put(course.getName() + "年级排名", source.get("C_" + course.getId() + "_GradeRanking"));
+            }
+            rows.add(row);
+        }
+        ExcelWriter writer = ExcelUtil.getWriter(true);
+        writer.write(rows, true);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8");
+        String name = student == null || student.getName() == null ? "学生个人分析" : student.getName() + "-个人分析";
+        response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(name + ".xlsx", "UTF-8"));
+        writer.flush(response.getOutputStream(), true);
+        writer.close();
+    }
+
+    private String cleanExportValue(Object value) {
+        return value == null ? "" : String.valueOf(value).replaceAll("<[^>]*>", "");
+    }
+
     private double average(List<SysScore> scores) {
         return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
     }
