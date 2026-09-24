@@ -157,6 +157,12 @@ public class ScoreImportListener extends MyAnalysisEventListener<ScoreImportVO> 
     }
 
     private void saveScore(SysExamBody examBody, SysStudent student, SysCourse course, Double score) {
+        if (score != null && (score < 0 || (course.getFullScore() != null && score > course.getFullScore()))) {
+            invalidCount++;
+            msg.append("学生").append(student.getName()).append("的").append(course.getName())
+                    .append("成绩超出有效范围；<br/>");
+            return;
+        }
         ScoreEntryForm scoreEntryForm = new ScoreEntryForm();
         scoreEntryForm.setExamBodyId(examBody.getId());
         scoreEntryForm.setCourseId(course.getId());
