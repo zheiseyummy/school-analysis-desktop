@@ -33,6 +33,7 @@ const courseClazzStaticsList = ref<CourseClazzStaticsBO[]>([]);
 const teacherAnalysisList = ref<any[]>([]);
 const previousExamId = ref<number>();
 const progressBands = ref<Record<string, any[]>>({});
+const historyExamIds = ref<number[]>([]);
 /** 加载考试下拉数据源 */
 async function loadExamOptions() {
   getOptions(queryParams).then((response) => {
@@ -87,7 +88,8 @@ function handleQuery() {
 
 function exportCurrentHistory() {
   if (!queryParams.gradeId || !queryParams.examId) return;
-  exportStudentHistory({ gradeId: queryParams.gradeId, examIds: String(queryParams.examId) }).then((response: any) => {
+  const ids = historyExamIds.value.length ? historyExamIds.value : [queryParams.examId];
+  exportStudentHistory({ gradeId: queryParams.gradeId, examIds: ids.join(",") }).then((response: any) => {
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement("a"); link.href = url; link.download = "学生成绩综合表.xlsx"; link.click(); window.URL.revokeObjectURL(url);
   });
@@ -273,6 +275,11 @@ const renderRightChart = () => {
         </el-form-item>
         <el-form-item label="对比考试">
           <el-select v-model="previousExamId" clearable class="!w-[200px]" placeholder="可选上次考试">
+            <el-option v-for="item in examList" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="导出考试">
+          <el-select v-model="historyExamIds" multiple collapse-tags clearable class="!w-[260px]" placeholder="默认导出当前考试">
             <el-option v-for="item in examList" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
