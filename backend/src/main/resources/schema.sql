@@ -68,5 +68,6 @@ CREATE TABLE IF NOT EXISTS sys_dict (
 
 CREATE INDEX IF NOT EXISTS idx_score_exam_student ON sys_score(exam_id, student_id);
 CREATE INDEX IF NOT EXISTS idx_score_exam_course ON sys_score(exam_id, course_id);
+CREATE INDEX IF NOT EXISTS idx_exam_body_exam_clazz ON sys_exam_body(exam_id, grade_clazz_id);
 CREATE INDEX IF NOT EXISTS idx_clazz_student_student ON sys_clazz_student(student_id, year);
 CREATE INDEX IF NOT EXISTS idx_clazz_student_clazz ON sys_clazz_student(clazz_id, year);
