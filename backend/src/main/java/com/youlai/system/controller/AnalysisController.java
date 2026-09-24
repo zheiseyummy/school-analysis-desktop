@@ -192,6 +192,12 @@ public class AnalysisController {
             row.put("maxScore", list.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).max(Double::compareTo).orElse(0D));
             row.put("minScore", list.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).min(Double::compareTo).orElse(0D));
             row.put("scoreCount", list.size());
+            long excellentCount = list.stream().filter(s -> Integer.valueOf(1).equals(s.getDegree())).count();
+            long passCount = list.stream().filter(s -> s.getDegree() != null && s.getDegree() <= 4).count();
+            row.put("excellentCount", excellentCount);
+            row.put("excellentRate", list.isEmpty() ? 0D : excellentCount * 1D / list.size());
+            row.put("passCount", passCount);
+            row.put("passRate", list.isEmpty() ? 0D : passCount * 1D / list.size());
             result.add(row);
         });
         return Result.success(result);
