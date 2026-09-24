@@ -40,6 +40,7 @@ const formData = reactive<ExamForm>({
   status: 1,
   code: "",
   name: "",
+  examType: "考试",
 });
 
 const rules = reactive({
@@ -87,6 +88,7 @@ function openDialog(examId?: number) {
     });
   } else {
     dialog.title = "新增考试";
+    formData.examType = "考试";
   }
 }
 
@@ -410,7 +412,7 @@ onMounted(() => {
         </el-form-item>
 
         <el-form-item label="考试类型" prop="examType">
-          <dictionary v-model="formData.examType" type-code="examType" />
+          <el-input v-model="formData.examType" readonly />
         </el-form-item>
         <el-form-item label="考试日期" prop="examDate">
           <el-date-picker
