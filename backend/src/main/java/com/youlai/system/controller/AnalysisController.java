@@ -239,6 +239,8 @@ public class AnalysisController {
         List<SysScore> previous = scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId);
         Map<Long, Double> currentMap = current.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
         Map<Long, Double> previousMap = previous.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Integer> currentRanks = rankMap(currentMap);
+        Map<Long, Integer> previousRanks = rankMap(previousMap);
         Map<Long, String> names = new HashMap<>();
         studentService.listByIds(new ArrayList<>(currentMap.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
         List<Map<String, Object>> result = new ArrayList<>();
@@ -247,9 +249,38 @@ public class AnalysisController {
             double old = previousMap.getOrDefault(studentId, 0D);
             row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, ""));
             row.put("currentScore", score); row.put("previousScore", old); row.put("scoreChange", score - old);
+            row.put("currentRank", currentRanks.get(studentId)); row.put("previousRank", previousRanks.get(studentId));
+            row.put("rankChange", previousRanks.getOrDefault(studentId, currentRanks.get(studentId)) - currentRanks.get(studentId));
             result.add(row);
         });
         result.sort((a, b) -> Double.compare((Double) b.get("scoreChange"), (Double) a.get("scoreChange")));
+        return Result.success(result);
+    }
+
+    private Map<Long, Integer> rankMap(Map<Long, Double> scores) {
+        List<Long> ids = scores.entrySet().stream().sorted(Map.Entry.<Long, Double>comparingByValue().reversed()).map(Map.Entry::getKey).toList();
+        Map<Long, Integer> ranks = new HashMap<>();
+        for (int i = 0; i < ids.size(); i++) ranks.put(ids.get(i), i + 1);
+        return ranks;
+    }
+
+    @Operation(summary = "班级学科落后预警")
+    @GetMapping("/clazzSubjectWarnings")
+    public Result<List<Map<String, Object>>> clazzSubjectWarnings(Long clazzId, Long gradeId, Long examId, Double threshold) {
+        double limit = threshold == null ? 5D : threshold;
+        List<SysScore> clazzScores = scoreService.getScoreListByExamIdAndClazzId(examId, clazzId);
+        List<SysScore> gradeScores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
+        Map<Long, Double> clazzAvg = clazzScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> gradeAvg = gradeScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
+        List<Map<String, Object>> result = new ArrayList<>();
+        clazzAvg.forEach((courseId, avg) -> {
+            double gap = avg - gradeAvg.getOrDefault(courseId, 0D);
+            if (gap <= -limit) {
+                Map<String, Object> row = new LinkedHashMap<>(); row.put("courseId", courseId); row.put("courseName", courses.get(courseId) == null ? "" : courses.get(courseId).getName()); row.put("clazzAverage", avg); row.put("gradeAverage", gradeAvg.getOrDefault(courseId, 0D)); row.put("difference", gap); result.add(row);
+            }
+        });
+        result.sort((a, b) -> Double.compare((Double) a.get("difference"), (Double) b.get("difference")));
         return Result.success(result);
     }
 
