@@ -11,7 +11,7 @@ defineOptions({
   name: "GradeExamAnalysis",
   inheritAttrs: false,
 });
-import { getGradeExamAnalysisData } from "@/api/analysis";
+import { getGradeExamAnalysisData, getTeacherAnalysisData } from "@/api/analysis";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -30,6 +30,7 @@ const queryParams = reactive<ClazzExamAnalysisQuery>({});
 const courseStaticsList = ref<CourseStaticsBO[]>([]);
 const clazzStaticsList = ref<ClazzStaticsBO[]>([]);
 const courseClazzStaticsList = ref<CourseClazzStaticsBO[]>([]);
+const teacherAnalysisList = ref<any[]>([]);
 /** 加载考试下拉数据源 */
 async function loadExamOptions() {
   getOptions(queryParams).then((response) => {
@@ -61,6 +62,7 @@ function handleQuery() {
           courseStaticsList.value = data.courseStaticsList;
           clazzStaticsList.value = data.clazzStaticsList;
           courseClazzStaticsList.value = data.courseClazzStaticsList;
+          getTeacherAnalysisData({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (teacherAnalysisList.value = data));
           grade.value = data.grade;
           exam.value = data.exam;
           renderLeftChart();
@@ -321,6 +323,23 @@ const renderRightChart = () => {
             :loading="loading"
             :course-clazz-statics-list="courseClazzStaticsList"
           />
+        </el-col>
+      </el-row>
+      <el-row v-if="teacherAnalysisList.length" class="mt-3">
+        <el-col :span="24">
+          <el-card shadow="never">
+            <template #header>任课教师成绩分析</template>
+            <el-table :data="teacherAnalysisList" size="small">
+              <el-table-column prop="teacherName" label="教师" />
+              <el-table-column prop="courseName" label="学科" />
+              <el-table-column prop="clazzName" label="班级" />
+              <el-table-column prop="averageScore" label="班级均分" />
+              <el-table-column prop="gradeAverageScore" label="年级均分" />
+              <el-table-column prop="averageDifference" label="均分差" />
+              <el-table-column prop="excellentRate" label="优秀率" />
+              <el-table-column prop="passRate" label="及格率" />
+            </el-table>
+          </el-card>
         </el-col>
       </el-row>
       <el-row class="mt-3">
