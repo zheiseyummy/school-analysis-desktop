@@ -13,6 +13,7 @@ import {
   getClazzExamAnalysisData,
   getClazzExamAnalysisDataToPdf,
   getClazzExamAnalysisDataToExcel,
+  getClazzSubjectWarnings,
 } from "@/api/analysis";
 import { getComplexClazzOptions } from "@/api/clazz";
 import { getOptions } from "@/api/exam";
@@ -35,6 +36,7 @@ const clazz = ref<ClazzPageVO>({});
 const exam = ref<ExamPageVO>({});
 
 const courseStaticsList = ref<CourseStaticsBO[]>([]);
+const subjectWarnings = ref<any[]>([]);
 
 const queryParams = reactive<ClazzExamAnalysisQuery>({});
 
@@ -78,6 +80,9 @@ function handleQuery() {
           clazz.value = data.clazz;
           exam.value = data.exam;
           courseStaticsList.value = data.courseStaticsList;
+          if (queryParams.clazzId && queryParams.gradeId && queryParams.examId) {
+            getClazzSubjectWarnings({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, examId: queryParams.examId }).then(({ data }) => (subjectWarnings.value = data));
+          }
           courseNameList.value = data.courseNameList;
           studentCourseScoreList.value = data.studentCourseScoreList;
           courseList.value = data.courseList;
@@ -555,7 +560,7 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
         </el-form-item>
       </el-form>
     </div>
-    <el-card shadow="never" class="table-container">
+        <el-card shadow="never" class="table-container">
       <template #header>
         <el-descriptions
           v-if="exam.id && grade.id && clazz.id"
@@ -668,6 +673,15 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
           </el-tabs>
         </el-col>
       </el-row>
+      <el-card v-if="subjectWarnings.length" class="mt-3" shadow="never">
+        <template #header>学科落后预警</template>
+        <el-table :data="subjectWarnings" size="small">
+          <el-table-column prop="courseName" label="学科" />
+          <el-table-column prop="clazzAverage" label="班级均分" />
+          <el-table-column prop="gradeAverage" label="年级均分" />
+          <el-table-column prop="difference" label="分差" />
+        </el-table>
+      </el-card>
     </el-card>
   </div>
 </template>
