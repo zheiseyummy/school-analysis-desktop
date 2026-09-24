@@ -14,6 +14,9 @@ import com.youlai.system.model.entity.SysClazz;
 import com.youlai.system.model.entity.SysCourse;
 import com.youlai.system.model.entity.SysExam;
 import com.youlai.system.model.entity.SysExamBody;
+import com.youlai.system.model.entity.SysScore;
+import com.youlai.system.model.entity.SysArrange;
+import com.youlai.system.model.entity.SysTeacher;
 import com.youlai.system.model.query.ClazzExamAnalysisQuery;
 import com.youlai.system.model.query.StudentScoreAnalysisQuery;
 import com.youlai.system.service.*;
@@ -58,6 +61,8 @@ public class AnalysisController {
     private final SysClazzStudentService clazzStudentService;
 
     private final SysExamService examService;
+    private final SysArrangeService arrangeService;
+    private final SysTeacherService teacherService;
 
     @Operation(summary = "班级考试维度数据列表")
     @GetMapping("/clazzExamAnalysisData")
@@ -163,6 +168,33 @@ public class AnalysisController {
     public Result<Map<String, Object>> studentScoreAnalysisData(StudentScoreAnalysisQuery query) {
         Map<String, Object> resultMap = businessService.studentAllScoreSummaryData(query.getStudentId());
         return Result.success(resultMap);
+    }
+
+    @Operation(summary = "任课教师成绩分析")
+    @GetMapping("/teacherAnalysisData")
+    public Result<List<Map<String, Object>>> teacherAnalysisData(Long examId, Long gradeId) {
+        List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
+        Map<Long, SysTeacher> teachers = teacherService.list().stream().collect(Collectors.toMap(SysTeacher::getId, it -> it));
+        Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
+        Map<Long, SysClazz> clazzes = clazzService.list().stream().collect(Collectors.toMap(SysClazz::getId, it -> it));
+        Map<String, List<SysScore>> groups = scores.stream().collect(Collectors.groupingBy(s -> s.getTeacherId() + ":" + s.getCourseId() + ":" + s.getClazzId()));
+        Map<Long, Double> gradeAvg = scores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        List<Map<String, Object>> result = new ArrayList<>();
+        groups.forEach((key, list) -> {
+            SysScore first = list.get(0);
+            double avg = list.stream().mapToDouble(s -> s.getScore() == null ? 0D : s.getScore()).average().orElse(0D);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("teacherId", first.getTeacherId()); row.put("teacherName", teachers.containsKey(first.getTeacherId()) ? teachers.get(first.getTeacherId()).getName() : "");
+            row.put("courseId", first.getCourseId()); row.put("courseName", courses.containsKey(first.getCourseId()) ? courses.get(first.getCourseId()).getName() : "");
+            row.put("clazzId", first.getClazzId()); row.put("clazzName", clazzes.containsKey(first.getClazzId()) ? clazzes.get(first.getClazzId()).getName() : "");
+            row.put("averageScore", avg); row.put("gradeAverageScore", gradeAvg.getOrDefault(first.getCourseId(), 0D));
+            row.put("averageDifference", avg - gradeAvg.getOrDefault(first.getCourseId(), 0D));
+            row.put("maxScore", list.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).max(Double::compareTo).orElse(0D));
+            row.put("minScore", list.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).min(Double::compareTo).orElse(0D));
+            row.put("scoreCount", list.size());
+            result.add(row);
+        });
+        return Result.success(result);
     }
 
     @Operation(summary = "个人单个课程成绩分析数据列表")
