@@ -36,6 +36,6 @@ const layout = computed(() => settingsStore.layout);
 }
 
 .el-scrollbar {
-  box-shadow: 1px 1px 1px 1px blueviolet inset;
+  box-shadow: none;
 }
 </style>

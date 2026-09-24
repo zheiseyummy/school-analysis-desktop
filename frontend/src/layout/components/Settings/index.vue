@@ -22,18 +22,8 @@
     </div>
 
     <div class="settings-option">
-      <el-text>开启 Tags-View</el-text>
-      <el-switch v-model="settingsStore.tagsView" />
-    </div>
-
-    <div class="settings-option">
       <span class="text-xs">固定 Header</span>
       <el-switch v-model="settingsStore.fixedHeader" />
-    </div>
-
-    <div class="settings-option">
-      <span class="text-xs">侧边栏 Logo</span>
-      <el-switch v-model="settingsStore.sidebarLogo" />
     </div>
 
     <div class="settings-option">

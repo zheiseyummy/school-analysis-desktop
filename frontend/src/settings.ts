@@ -1,17 +1,17 @@
 const defaultSettings: AppSettings = {
-  title: "初中学情分析系统",
+  title: "",
   version: "v2.9.1",
   showSettings: true,
-  tagsView: true,
+  tagsView: false,
   fixedHeader: false,
-  sidebarLogo: true,
+  sidebarLogo: false,
   layout: "left",
   theme: "light",
   size: "default",
   language: "zh-cn",
   themeColor: "#409EFF",
   watermarkEnabled: false,
-  watermarkContent: "初中学情分析系统",
+  watermarkContent: "",
 };
 
 export default defaultSettings;

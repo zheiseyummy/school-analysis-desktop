@@ -6,12 +6,9 @@ export const useSettingsStore = defineStore("setting", () => {
   // 是否显示设置
   const settingsVisible = ref(false);
   // 是否显示标签视图
-  const tagsView = useStorage<boolean>("tagsView", defaultSettings.tagsView);
+  const tagsView = ref(false);
   // 是否显示侧边栏logo
-  const sidebarLogo = useStorage<boolean>(
-    "sidebarLogo",
-    defaultSettings.sidebarLogo
-  );
+  const sidebarLogo = ref(false);
   // 是否固定头部
   const fixedHeader = useStorage<boolean>(
     "fixedHeader",
@@ -34,8 +31,6 @@ export const useSettingsStore = defineStore("setting", () => {
 
   const settingsMap: Record<string, Ref<SettingsValue>> = {
     fixedHeader,
-    tagsView,
-    sidebarLogo,
     layout,
     watermarkEnabled,
   };

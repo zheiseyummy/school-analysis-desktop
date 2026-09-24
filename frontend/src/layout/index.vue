@@ -119,11 +119,11 @@ function toggleSidebar() {
   top: 0;
   bottom: 0;
   left: 0;
-  z-index: 999;
+  z-index: 1000;
   width: $sidebar-width;
   height: 100%;
   overflow: hidden;
-  background-color: $menu-background;
+  background-color: #fff;
   transition: width 0.28s;
 
   :deep(.el-menu) {
