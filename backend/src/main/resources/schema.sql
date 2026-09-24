@@ -46,6 +46,35 @@ CREATE TABLE IF NOT EXISTS sys_exam_course (
   id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL, course_id INTEGER NOT NULL,
   full_score REAL, sort INTEGER DEFAULT 0, UNIQUE(exam_id, course_id)
 );
+CREATE TABLE IF NOT EXISTS quality_dimension (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sort_order INTEGER NOT NULL UNIQUE,
+  deleted INTEGER DEFAULT 0, create_time TEXT, update_time TEXT
+);
+CREATE TABLE IF NOT EXISTS quality_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, semester TEXT NOT NULL,
+  dimension TEXT NOT NULL, level_or_score TEXT NOT NULL, comment TEXT,
+  deleted INTEGER DEFAULT 0, create_time TEXT, update_time TEXT,
+  UNIQUE(student_id, semester, dimension)
+);
+CREATE TABLE IF NOT EXISTS quality_roster_entry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, semester TEXT NOT NULL,
+  deleted INTEGER DEFAULT 0, create_time TEXT, update_time TEXT,
+  UNIQUE(student_id, semester)
+);
+CREATE TABLE IF NOT EXISTS quality_finalization (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, clazz_id INTEGER NOT NULL UNIQUE,
+  is_locked INTEGER DEFAULT 0, generated_at TEXT, locked_at TEXT,
+  create_time TEXT, update_time TEXT
+);
+CREATE TABLE IF NOT EXISTS quality_final_result (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, clazz_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  dimension TEXT NOT NULL, cumulative_score REAL NOT NULL, class_rank INTEGER NOT NULL,
+  automatic_level TEXT NOT NULL, final_level TEXT NOT NULL, is_manually_adjusted INTEGER DEFAULT 0,
+  available_terms INTEGER DEFAULT 0, contains_na INTEGER DEFAULT 0,
+  UNIQUE(student_id, dimension)
+);
+CREATE INDEX IF NOT EXISTS idx_quality_record_student ON quality_record(student_id, semester);
+CREATE INDEX IF NOT EXISTS idx_quality_final_class ON quality_final_result(clazz_id, dimension);
 CREATE TABLE IF NOT EXISTS sys_score (
   id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL, grade_id INTEGER,
   grade_name TEXT, clazz_id INTEGER, clazz_name TEXT, student_id INTEGER NOT NULL,
