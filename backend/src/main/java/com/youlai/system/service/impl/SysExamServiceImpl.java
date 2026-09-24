@@ -10,13 +10,17 @@ import com.youlai.system.common.model.Option;
 import com.youlai.system.converter.ExamConverter;
 import com.youlai.system.mapper.SysExamMapper;
 import com.youlai.system.model.entity.SysExam;
+import com.youlai.system.model.entity.SysExamBody;
 import com.youlai.system.model.form.ExamForm;
 import com.youlai.system.model.query.ClazzExamAnalysisQuery;
 import com.youlai.system.model.query.ExamPageQuery;
 import com.youlai.system.model.vo.ExamPageVO;
 import com.youlai.system.service.SysExamService;
+import com.youlai.system.service.SysClazzService;
+import com.youlai.system.service.SysExamBodyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.List;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> implements SysExamService {
 
     private final ExamConverter examConverter;
+    private final SysClazzService clazzService;
+    private final SysExamBodyService examBodyService;
 
 
     @Override
@@ -56,6 +62,7 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
     }
 
     @Override
+    @Transactional
     public boolean saveExam(ExamForm examForm) {
         String name = examForm.getName();
         long nameCount = this.count(new LambdaQueryWrapper<SysExam>().eq(SysExam::getName, name));
@@ -67,7 +74,17 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
 
         // 实体转换
         SysExam exam = examConverter.form2Entity(examForm);
-        return save(exam);
+        boolean saved = save(exam);
+        if (saved) {
+            clazzService.list().forEach(clazz -> {
+                SysExamBody body = new SysExamBody();
+                body.setExamId(exam.getId());
+                body.setGradeClazzId(clazz.getId());
+                body.setGOrC("C");
+                examBodyService.save(body);
+            });
+        }
+        return saved;
     }
 
     @Override
