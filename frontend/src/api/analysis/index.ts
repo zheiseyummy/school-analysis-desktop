@@ -98,6 +98,14 @@ export function getStudentSingleCourseAnalysisData(
   });
 }
 
+export function getGradeInsights(params: { gradeId: number; examId: number; excellentLine?: number; passLine?: number }): AxiosPromise<any> {
+  return request({
+    url: "/api/v1/analysis/gradeInsights",
+    method: "get",
+    params,
+  });
+}
+
 export function getTeacherAnalysisData(params: { examId: number; gradeId: number }): AxiosPromise<any> {
   return request({
     url: "/api/v1/analysis/teacherAnalysisData",

@@ -11,7 +11,7 @@ defineOptions({
   name: "GradeExamAnalysis",
   inheritAttrs: false,
 });
-import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis } from "@/api/analysis";
+import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis, getGradeInsights } from "@/api/analysis";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -35,6 +35,7 @@ const previousExamId = ref<number>();
 const progressBands = ref<Record<string, any[]>>({});
 const historyExamIds = ref<number[]>([]);
 const biasAnalysisList = ref<any[]>([]);
+const gradeInsights = ref<any>({ classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} });
 /** 加载考试下拉数据源 */
 async function loadExamOptions() {
   getOptions(queryParams).then((response) => {
@@ -69,6 +70,7 @@ function handleQuery() {
           getTeacherAnalysisData({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (teacherAnalysisList.value = data));
           if (previousExamId.value && previousExamId.value !== queryParams.examId) getProgressBands({ gradeId: queryParams.gradeId!, currentExamId: queryParams.examId!, previousExamId: previousExamId.value }).then(({ data }) => (progressBands.value = data));
           getStudentBiasAnalysis({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (biasAnalysisList.value = data));
+          getGradeInsights({ gradeId: queryParams.gradeId!, examId: queryParams.examId! }).then(({ data }) => (gradeInsights.value = data));
           grade.value = data.grade;
           exam.value = data.exam;
           renderLeftChart();
@@ -82,6 +84,7 @@ function handleQuery() {
           courseClazzStaticsList.value = [];
           grade.value = {};
           exam.value = {};
+          gradeInsights.value = { classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} };
         })
         .finally(() => (loading.value = false));
     }
@@ -106,6 +109,7 @@ function resetQuery() {
   courseClazzStaticsList.value = [];
   grade.value = {};
   exam.value = {};
+  gradeInsights.value = { classRows: [], studentRows: [], excellentCritical: [], passCritical: [], distribution: {} };
   queryFormRef.value.resetFields();
   loadExamOptions();
 }
@@ -315,6 +319,22 @@ const renderRightChart = () => {
           </el-descriptions-item>
         </el-descriptions>
       </template>
+      <el-card v-if="gradeInsights.studentCount" shadow="never" class="mt-3">
+        <template #header>年级成绩诊断</template>
+        <el-descriptions :column="6" border>
+          <el-descriptions-item label="参考人数">{{ gradeInsights.studentCount }}</el-descriptions-item>
+          <el-descriptions-item label="平均分">{{ Number(gradeInsights.average ?? 0).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="中位数">{{ Number(gradeInsights.median ?? 0).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="最高分">{{ Number(gradeInsights.maximum ?? 0).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="最低分">{{ Number(gradeInsights.minimum ?? 0).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="标准差">{{ Number(gradeInsights.standardDeviation ?? 0).toFixed(2) }}</el-descriptions-item>
+        </el-descriptions>
+        <el-row :gutter="12" class="mt-3">
+          <el-col :span="12"><el-table :data="gradeInsights.classRows" border size="small"><el-table-column prop="clazzName" label="班级" /><el-table-column prop="studentCount" label="人数" /><el-table-column prop="averageScore" label="班级均分" /><el-table-column prop="gradeAverageScore" label="年级均分" /><el-table-column prop="averageDifference" label="均分差" /><el-table-column prop="excellentRate" label="优秀率" /><el-table-column prop="passRate" label="及格率" /></el-table></el-col>
+          <el-col :span="12"><el-table :data="gradeInsights.studentRows.slice(0, 10)" border size="small"><el-table-column prop="rank" label="排名" width="65" /><el-table-column prop="studentName" label="学生" /><el-table-column prop="totalScore" label="总分" /><el-table-column prop="percentile" label="百分位"><template #default="scope">{{ Number(scope.row.percentile ?? 0).toFixed(1) }}%</template></el-table-column><el-table-column prop="stabilityScore" label="年级波动参考" /></el-table></el-col>
+        </el-row>
+        <el-row :gutter="12" class="mt-3"><el-col :span="12"><el-alert title="优秀临界生" type="warning" :closable="false" show-icon><template #default><span v-if="!gradeInsights.excellentCritical?.length">暂无</span><span v-for="item in gradeInsights.excellentCritical" :key="item.studentId" class="critical-item">{{ item.studentName }}（差 {{ Math.abs(item.distanceToExcellent).toFixed(1) }} 分）</span></template></el-alert></el-col><el-col :span="12"><el-alert title="及格临界生" type="info" :closable="false" show-icon><template #default><span v-if="!gradeInsights.passCritical?.length">暂无</span><span v-for="item in gradeInsights.passCritical" :key="item.studentId" class="critical-item">{{ item.studentName }}（差 {{ Math.abs(item.distanceToPass).toFixed(1) }} 分）</span></template></el-alert></el-col></el-row>
+      </el-card>
       <el-row>
         <el-col :span="24">
           <custom-table
@@ -417,6 +437,7 @@ const renderRightChart = () => {
   width: 100%;
   height: 500px;
 }
+.critical-item { display: inline-block; margin-right: 14px; }
 </style>
 <style>
 .item {

@@ -40,6 +40,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -172,6 +173,39 @@ public class AnalysisController {
     public Result<Map<String, Object>> studentScoreAnalysisData(StudentScoreAnalysisQuery query) {
         Map<String, Object> resultMap = businessService.studentAllScoreSummaryData(query.getStudentId());
         return Result.success(resultMap);
+    }
+
+    @Operation(summary = "年级成绩诊断指标")
+    @GetMapping("/gradeInsights")
+    public Result<Map<String, Object>> gradeInsights(Long gradeId, Long examId, Double excellentLine, Double passLine) {
+        List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
+        Map<Long, Double> totals = scores.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore)));
+        List<Double> values = totals.values().stream().sorted().toList();
+        double average = values.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+        double maximum = values.stream().mapToDouble(Double::doubleValue).max().orElse(0D);
+        double minimum = values.stream().mapToDouble(Double::doubleValue).min().orElse(0D);
+        double median = values.isEmpty() ? 0D : values.get(values.size() / 2);
+        double variance = values.isEmpty() ? 0D : values.stream().mapToDouble(v -> Math.pow(v - average, 2)).average().orElse(0D);
+        double stdDev = Math.sqrt(variance);
+        Map<Long, SysCourse> insightCourses = courseService.listByIds(scores.stream().map(SysScore::getCourseId).filter(Objects::nonNull).distinct().toList()).stream().collect(Collectors.toMap(SysCourse::getId, c -> c));
+        double configuredMaximum = insightCourses.values().stream().map(SysCourse::getFullScore).filter(Objects::nonNull).mapToDouble(Integer::doubleValue).sum();
+        double fullScore = configuredMaximum > 0D ? configuredMaximum : maximum;
+        double excellent = excellentLine == null ? fullScore * .85D : excellentLine;
+        double pass = passLine == null ? fullScore * .60D : passLine;
+        Map<Long, SysStudent> studentMap = studentService.listByIds(new ArrayList<>(totals.keySet())).stream().collect(Collectors.toMap(SysStudent::getId, s -> s));
+        List<Map<String, Object>> studentRows = new ArrayList<>();
+        List<Long> sortedIds = totals.entrySet().stream().sorted(Map.Entry.<Long, Double>comparingByValue().reversed()).map(Map.Entry::getKey).toList();
+        for (int i = 0; i < sortedIds.size(); i++) {
+            Long studentId = sortedIds.get(i); double total = totals.get(studentId); Map<String, Object> row = new LinkedHashMap<>();
+            SysStudent student = studentMap.get(studentId); row.put("studentId", studentId); row.put("studentName", student == null ? "" : student.getName()); row.put("studentCode", student == null ? "" : student.getCode()); row.put("totalScore", total); row.put("rank", i + 1); row.put("percentile", sortedIds.size() <= 1 ? 100D : (sortedIds.size() - i - 1) * 100D / (sortedIds.size() - 1)); row.put("distanceToExcellent", total - excellent); row.put("distanceToPass", total - pass); row.put("stabilityScore", stdDev); studentRows.add(row);
+        }
+        Map<Long, List<SysScore>> classScores = scores.stream().collect(Collectors.groupingBy(SysScore::getClazzId));
+        List<Map<String, Object>> classRows = new ArrayList<>();
+        Map<Long, SysClazz> clazzMap = clazzService.listByIds(new ArrayList<>(classScores.keySet())).stream().collect(Collectors.toMap(SysClazz::getId, c -> c));
+        classScores.forEach((clazzId, list) -> { Map<Long, Double> classTotals = list.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore))); double classAvg = classTotals.values().stream().mapToDouble(Double::doubleValue).average().orElse(0D); long excellentCount = classTotals.values().stream().filter(v -> v >= excellent).count(); long passCount = classTotals.values().stream().filter(v -> v >= pass).count(); Map<String, Object> row = new LinkedHashMap<>(); row.put("clazzId", clazzId); row.put("clazzName", clazzMap.get(clazzId) == null ? String.valueOf(clazzId) : clazzMap.get(clazzId).getName()); row.put("studentCount", classTotals.size()); row.put("averageScore", classAvg); row.put("gradeAverageScore", average); row.put("averageDifference", classAvg - average); row.put("excellentRate", classTotals.isEmpty() ? 0D : excellentCount * 1D / classTotals.size()); row.put("passRate", classTotals.isEmpty() ? 0D : passCount * 1D / classTotals.size()); classRows.add(row); });
+        Map<String, Object> distribution = new LinkedHashMap<>(); distribution.put("belowPass", totals.values().stream().filter(v -> v < pass).count()); distribution.put("passToExcellent", totals.values().stream().filter(v -> v >= pass && v < excellent).count()); distribution.put("excellent", totals.values().stream().filter(v -> v >= excellent).count());
+        Map<String, Object> result = new LinkedHashMap<>(); result.put("studentCount", totals.size()); result.put("average", average); result.put("median", median); result.put("maximum", maximum); result.put("minimum", minimum); result.put("standardDeviation", stdDev); result.put("fullScore", fullScore); result.put("excellentLine", excellent); result.put("passLine", pass); result.put("distribution", distribution); result.put("classRows", classRows); result.put("studentRows", studentRows); result.put("excellentCritical", studentRows.stream().filter(r -> (Double) r.get("totalScore") < excellent && (Double) r.get("totalScore") >= excellent - 10).toList()); result.put("passCritical", studentRows.stream().filter(r -> (Double) r.get("totalScore") < pass && (Double) r.get("totalScore") >= pass - 10).toList());
+        return Result.success(result);
     }
 
     @Operation(summary = "任课教师成绩分析")
