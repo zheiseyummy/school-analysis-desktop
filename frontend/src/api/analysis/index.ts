@@ -99,33 +99,66 @@ export function getStudentSingleCourseAnalysisData(
 }
 
 export function getTeacherAnalysisData(params: { examId: number; gradeId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/teacherAnalysisData", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/teacherAnalysisData",
+    method: "get",
+    params,
+  });
 }
 
 export function getClazzSubjectProgress(params: { clazzId: number; gradeId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/clazzSubjectProgress", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/clazzSubjectProgress",
+    method: "get",
+    params,
+  });
 }
 
 export function getStudentProgressRanking(params: { clazzId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/studentProgressRanking", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/studentProgressRanking",
+    method: "get",
+    params,
+  });
 }
 
 export function getClazzSubjectWarnings(params: { clazzId: number; gradeId: number; examId: number; threshold?: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/clazzSubjectWarnings", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/clazzSubjectWarnings",
+    method: "get",
+    params,
+  });
 }
 
 export function getClazzSubjectBalance(params: { clazzId: number; examId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/clazzSubjectBalance", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/clazzSubjectBalance",
+    method: "get",
+    params,
+  });
 }
 
 export function getProgressBands(params: { gradeId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/progressBands", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/progressBands",
+    method: "get",
+    params,
+  });
 }
 
 export function getStudentBiasAnalysis(params: { gradeId: number; examId: number }): AxiosPromise<any> {
-  return request({ url: "/api/v1/analysis/studentBiasAnalysis", method: "get", params });
+  return request({
+    url: "/api/v1/analysis/studentBiasAnalysis",
+    method: "get",
+    params,
+  });
 }
 
 export function exportStudentHistory(params: { gradeId: number; examIds: string }) {
-  return request({ url: "/api/v1/analysis/studentHistoryToExcel", method: "get", params, responseType: "arraybuffer" });
+  return request({
+    url: "/api/v1/analysis/studentHistoryToExcel",
+    method: "get",
+    params,
+    responseType: "arraybuffer",
+  });
 }
