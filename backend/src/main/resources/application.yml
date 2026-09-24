@@ -28,7 +28,9 @@ mybatis-plus:
 
 # Kept only for the staged file-storage migration; no remote credentials shipped.
 oss:
-  type: minio
+  type: local
+  local:
+    directory: files
   minio:
     endpoint: ${LOCAL_MINIO_ENDPOINT:http://127.0.0.1:9000}
     access-key: ${LOCAL_MINIO_ACCESS_KEY:local-placeholder}

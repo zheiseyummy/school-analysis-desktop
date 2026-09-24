@@ -16,6 +16,7 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.validation.beanvalidation.SpringConstraintValidatorFactory;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.math.BigInteger;
@@ -26,6 +27,12 @@ import java.util.TimeZone;
 @Configuration
 @Slf4j
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String filesRoot = java.nio.file.Paths.get("files").toAbsolutePath().normalize().toUri().toString();
+        registry.addResourceHandler("/files/**").addResourceLocations(filesRoot);
+    }
 
     @Override
     public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
