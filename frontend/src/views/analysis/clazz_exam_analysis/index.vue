@@ -14,6 +14,7 @@ import {
   getClazzExamAnalysisDataToPdf,
   getClazzExamAnalysisDataToExcel,
   getClazzSubjectWarnings,
+  getClazzSubjectProgress,
 } from "@/api/analysis";
 import { getComplexClazzOptions } from "@/api/clazz";
 import { getOptions } from "@/api/exam";
@@ -37,6 +38,8 @@ const exam = ref<ExamPageVO>({});
 
 const courseStaticsList = ref<CourseStaticsBO[]>([]);
 const subjectWarnings = ref<any[]>([]);
+const subjectProgress = ref<any[]>([]);
+const previousExamId = ref<number>();
 
 const queryParams = reactive<ClazzExamAnalysisQuery>({});
 
@@ -82,6 +85,11 @@ function handleQuery() {
           courseStaticsList.value = data.courseStaticsList;
           if (queryParams.clazzId && queryParams.gradeId && queryParams.examId) {
             getClazzSubjectWarnings({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, examId: queryParams.examId }).then(({ data }) => (subjectWarnings.value = data));
+            if (previousExamId.value && previousExamId.value !== queryParams.examId) {
+              getClazzSubjectProgress({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, currentExamId: queryParams.examId, previousExamId: previousExamId.value }).then(({ data }) => (subjectProgress.value = data));
+            } else {
+              subjectProgress.value = [];
+            }
           }
           courseNameList.value = data.courseNameList;
           studentCourseScoreList.value = data.studentCourseScoreList;
@@ -101,6 +109,7 @@ function handleQuery() {
           grade.value = {};
           clazz.value = {};
           exam.value = {};
+          subjectProgress.value = [];
         })
         .finally(() => (loading.value = false));
     }
@@ -545,6 +554,11 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="对比考试">
+          <el-select v-model="previousExamId" clearable class="!w-[200px]" placeholder="可选任意考试">
+            <el-option v-for="item in examList" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
 
         <el-form-item>
           <el-button type="primary" @click="handleQuery"
@@ -680,6 +694,19 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
           <el-table-column prop="clazzAverage" label="班级均分" />
           <el-table-column prop="gradeAverage" label="年级均分" />
           <el-table-column prop="difference" label="分差" />
+        </el-table>
+      </el-card>
+      <el-card v-if="subjectProgress.length" class="mt-3" shadow="never">
+        <template #header>班级学科进退步与年级对比</template>
+        <el-table :data="subjectProgress" border size="small">
+          <el-table-column prop="courseName" label="学科" />
+          <el-table-column prop="currentAverage" label="本次班级均分" />
+          <el-table-column prop="previousAverage" label="对比班级均分" />
+          <el-table-column prop="averageChange" label="班级均分变化" />
+          <el-table-column prop="gradeAverageChange" label="年级均分变化" />
+          <el-table-column prop="relativeChange" label="相对年级变化" />
+          <el-table-column prop="currentExcellentRate" label="本次优秀率" />
+          <el-table-column prop="currentPassRate" label="本次及格率" />
         </el-table>
       </el-card>
     </el-card>
