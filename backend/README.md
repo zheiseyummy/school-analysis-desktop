@@ -1,7 +1,26 @@
 
-> 本文件以下为原后端模板资料，仅作来源参考；其中 Docker、服务器部署、JWT、Redis 等说明不适用于当前单机改造版。请先阅读上级目录 README 与工作区 outputs 阶段进度。当前使用本机过渡后端，尚未完成 SQLite 和 EXE。
+> 本文件后半部分保留自上游后端模板，仅作来源参考；其中 Docker、服务器部署、JWT、Redis、MySQL 和在线接口文档说明不适用于当前单机改造版。请先阅读上级目录 README 与 `docs/单机桌面版改造-阶段进度.md`。当前后端默认使用本机 SQLite，尚未完成 Tauri 和 EXE。
 >
 > `sql/`、`doc/` 和 Dockerfile 保留为原包参考，本轮没有执行其中的初始化或部署脚本。不要直接在真实数据库运行带 DROP TABLE 的原始 SQL。
+
+## 当前本地运行方式
+
+在仓库根目录的 `frontend` 之外另开终端运行：
+
+```powershell
+cd backend
+mvn spring-boot:run
+```
+
+服务监听 `127.0.0.1:8989`，默认数据库为 `./data/school.db`，文件存储为 `./files/`。启动时会创建本地数据目录。当前服务免登录，不依赖 MySQL、Redis 或 MinIO 运行。
+
+后端打包检查：
+
+```powershell
+mvn -q -DskipTests package
+```
+
+以下“项目启动”和“接口文档”章节属于上游模板历史资料，不要按其中的 MySQL、Redis、JWT、Knife4j 或 Docker 步骤配置当前本地版本。
 
 <p align="center">
     <img alt="有来技术" src="https://img.shields.io/badge/Java -17-brightgreen.svg"/>
