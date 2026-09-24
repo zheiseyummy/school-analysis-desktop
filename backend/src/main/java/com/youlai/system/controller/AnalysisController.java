@@ -324,10 +324,15 @@ public class AnalysisController {
         now.forEach((id, value) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", id); row.put("studentName", names.getOrDefault(id, "")); row.put("currentScore", value); row.put("previousScore", old.getOrDefault(id, 0D)); row.put("change", value - old.getOrDefault(id, 0D)); changes.add(row); });
         changes.sort((a, b) -> Double.compare((Double) b.get("change"), (Double) a.get("change")));
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
-        result.put("W1", changes.stream().filter(x -> (Double) x.get("change") > 0).limit(Math.max(1, changes.size() / 5)).toList());
-        result.put("W2", changes.stream().filter(x -> (Double) x.get("change") > 0).skip(Math.max(1, changes.size() / 5)).limit(Math.max(1, changes.size() / 5)).toList());
-        result.put("L1", changes.stream().filter(x -> (Double) x.get("change") < 0).sorted((a, b) -> Double.compare((Double) a.get("change"), (Double) b.get("change"))).limit(Math.max(1, changes.size() / 5)).toList());
-        result.put("L2", changes.stream().filter(x -> (Double) x.get("change") < 0).sorted((a, b) -> Double.compare((Double) a.get("change"), (Double) b.get("change"))).skip(Math.max(1, changes.size() / 5)).limit(Math.max(1, changes.size() / 5)).toList());
+        List<Map<String, Object>> gains = changes.stream().filter(x -> (Double) x.get("change") > 0).toList();
+        List<Map<String, Object>> losses = changes.stream().filter(x -> (Double) x.get("change") < 0).sorted((a, b) -> Double.compare((Double) a.get("change"), (Double) b.get("change"))).toList();
+        int band = Math.max(1, changes.size() / 5);
+        for (int i = 0; i < 5; i++) {
+            int from = Math.min(i * band, gains.size()), to = Math.min((i + 1) * band, gains.size());
+            result.put("W" + (i + 1), gains.subList(from, to));
+            from = Math.min(i * band, losses.size()); to = Math.min((i + 1) * band, losses.size());
+            result.put("L" + (i + 1), losses.subList(from, to));
+        }
         return Result.success(result);
     }
 
