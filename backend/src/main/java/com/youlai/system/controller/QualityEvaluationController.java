@@ -178,7 +178,7 @@ public class QualityEvaluationController {
             int index=0; Double previous=null; int rank=0;
             for (Map<String,Object> value: values) {
                 index++; double score=(Double)value.get("score"); if(previous==null || Double.compare(previous,score)!=0) rank=index; previous=score;
-                String automatic = automaticLevel(index, values.size()); Map<String,Object> student=(Map<String,Object>)value.get("student");
+                String automatic = automaticLevel(rank, values.size()); Map<String,Object> student=(Map<String,Object>)value.get("student");
                 jdbcTemplate.update("INSERT INTO quality_final_result(clazz_id,student_id,dimension,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na) VALUES(?,?,?,?,?,?,?,0,?,?)", clazzId, student.get("id"), dimension, score, rank, automatic, automatic, value.get("available"), Boolean.TRUE.equals(value.get("containsNa")) ? 1 : 0); count++;
             }
         }
