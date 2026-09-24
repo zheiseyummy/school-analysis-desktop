@@ -203,6 +203,45 @@ public class AnalysisController {
         return Result.success(result);
     }
 
+    @Operation(summary = "班级学科考试进退步分析")
+    @GetMapping("/clazzSubjectProgress")
+    public Result<List<Map<String, Object>>> clazzSubjectProgress(Long clazzId, Long gradeId, Long currentExamId, Long previousExamId) {
+        List<SysScore> currentClazz = scoreService.getScoreListByExamIdAndClazzId(currentExamId, clazzId);
+        List<SysScore> previousClazz = scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId);
+        List<SysScore> currentGrade = scoreService.getScoreListByExamIdAndGradeId(currentExamId, gradeId);
+        List<SysScore> previousGrade = scoreService.getScoreListByExamIdAndGradeId(previousExamId, gradeId);
+        Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
+        Map<Long, List<SysScore>> cg = currentClazz.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
+        Map<Long, List<SysScore>> pg = previousClazz.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
+        Map<Long, List<SysScore>> cgr = currentGrade.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
+        Map<Long, List<SysScore>> pgr = previousGrade.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
+        List<Map<String, Object>> result = new ArrayList<>();
+        courses.forEach((courseId, course) -> {
+            double ca = average(cg.get(courseId)), pa = average(pg.get(courseId));
+            double cga = average(cgr.get(courseId)), pga = average(pgr.get(courseId));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("courseId", courseId); row.put("courseName", course.getName());
+            row.put("currentAverage", ca); row.put("previousAverage", pa); row.put("averageChange", ca - pa);
+            row.put("gradeAverageChange", cga - pga); row.put("relativeChange", (ca - pa) - (cga - pga));
+            row.put("currentExcellentRate", rate(cg.get(courseId), 1)); row.put("previousExcellentRate", rate(pg.get(courseId), 1));
+            row.put("currentPassRate", passRate(cg.get(courseId))); row.put("previousPassRate", passRate(pg.get(courseId)));
+            result.add(row);
+        });
+        return Result.success(result);
+    }
+
+    private double average(List<SysScore> scores) {
+        return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private double rate(List<SysScore> scores, int degree) {
+        return scores == null || scores.isEmpty() ? 0D : scores.stream().filter(s -> Integer.valueOf(degree).equals(s.getDegree())).count() * 1D / scores.size();
+    }
+
+    private double passRate(List<SysScore> scores) {
+        return scores == null || scores.isEmpty() ? 0D : scores.stream().filter(s -> s.getDegree() != null && s.getDegree() <= 4).count() * 1D / scores.size();
+    }
+
     @Operation(summary = "个人单个课程成绩分析数据列表")
     @GetMapping("/studentSingleScoreAnalysisData")
     public Result<Map<String, Object>> studentSingleCourseAnalysisData(StudentScoreAnalysisQuery query) {
