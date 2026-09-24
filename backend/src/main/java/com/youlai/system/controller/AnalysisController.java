@@ -359,15 +359,15 @@ public class AnalysisController {
 
     @Operation(summary = "学生多次考试综合成绩导出")
     @GetMapping("/studentHistoryToExcel")
-    public void studentHistoryToExcel(Long gradeId, String examIds, HttpServletResponse response) throws IOException {
+    public void studentHistoryToExcel(Long gradeId, String examIds, String direction, HttpServletResponse response) throws IOException {
         List<Long> ids = Arrays.stream(examIds.split(",")).filter(s -> !s.isBlank()).map(Long::valueOf).toList();
         List<SysScore> scores = ids.stream().flatMap(id -> scoreService.getScoreListByExamIdAndGradeId(id, gradeId).stream()).toList();
         Map<Long, SysStudent> students = studentService.listByIds(scores.stream().map(SysScore::getStudentId).distinct().toList()).stream().collect(Collectors.toMap(SysStudent::getId, it -> it));
         Map<Long, SysExam> exams = examService.listByIds(ids).stream().collect(Collectors.toMap(SysExam::getId, it -> it));
         Map<Long, Map<Long, Double>> totals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.groupingBy(SysScore::getExamId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore()))));
         ArrayList<Map<String, Object>> rows = new ArrayList<>();
-        totals.forEach((studentId, values) -> { Map<String, Object> row = new LinkedHashMap<>(); SysStudent student = students.get(studentId); row.put("学号", student == null ? "" : student.getCode()); row.put("姓名", student == null ? "" : student.getName()); row.put("学生ID", studentId); ids.forEach(id -> row.put(exams.get(id) == null ? String.valueOf(id) : exams.get(id).getName(), values.getOrDefault(id, 0D))); rows.add(row); });
-        ExcelWriter writer = ExcelUtil.getWriter(true); writer.write(rows, true); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"); response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生多次考试综合成绩.xlsx", "UTF-8")); writer.flush(response.getOutputStream(), true); writer.close();
+        totals.forEach((studentId, values) -> { Map<String, Object> row = new LinkedHashMap<>(); SysStudent student = students.get(studentId); row.put("方向", direction == null ? "全科" : direction); row.put("学号", student == null ? "" : student.getCode()); row.put("姓名", student == null ? "" : student.getName()); row.put("学生ID", studentId); ids.forEach(id -> row.put(exams.get(id) == null ? String.valueOf(id) : exams.get(id).getName(), values.getOrDefault(id, 0D))); rows.add(row); });
+        ExcelWriter writer = ExcelUtil.getWriter(true); writer.write(rows, true); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"); String suffix = "物理".equals(direction) ? "物理方向" : "历史".equals(direction) ? "历史方向" : "全科"; response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生多次考试综合成绩-" + suffix + ".xlsx", "UTF-8")); writer.flush(response.getOutputStream(), true); writer.close();
     }
 
     private double average(List<SysScore> scores) {
