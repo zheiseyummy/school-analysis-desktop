@@ -135,8 +135,9 @@ public class BusinessServiceImpl implements BusinessService {
         ExamPageVO examPageVO = examConverter.entity2VO(exam);
         Map<String, String> typeMap = dictService.mapDictOptions(SystemConstants.DICT_TYPE_EXAM_TYPE);
         Map<String, String> semesterMap = dictService.mapDictOptions(SystemConstants.DICT_TYPE_SEMESTER);
-        examPageVO.setSemesterStr(semesterMap.get(exam.getSemester().toString()));
-        examPageVO.setExamTypeStr(typeMap.get(exam.getExamType()));
+        // 本地导入的考试记录可能没有填写学期或字典值，分析页仍应正常展示。
+        examPageVO.setSemesterStr(exam.getSemester() == null ? "" : semesterMap.getOrDefault(exam.getSemester().toString(), String.valueOf(exam.getSemester())));
+        examPageVO.setExamTypeStr(exam.getExamType() == null ? "" : typeMap.getOrDefault(exam.getExamType(), exam.getExamType()));
         resultMap.put("exam", examPageVO);
         Long clazzId = examBody.getGradeClazzId();
         SysClazz clazz = clazzService.getById(clazzId);
@@ -368,8 +369,8 @@ public class BusinessServiceImpl implements BusinessService {
         Map<String, String> semesterMap = dictService.mapDictOptions(SystemConstants.DICT_TYPE_SEMESTER);
         SysExam exam = examService.getById(examId);
         ExamPageVO examPageVO = examConverter.entity2VO(exam);
-        examPageVO.setSemesterStr(semesterMap.get(exam.getSemester().toString()));
-        examPageVO.setExamTypeStr(typeMap.get(exam.getExamType()));
+        examPageVO.setSemesterStr(exam.getSemester() == null ? "" : semesterMap.getOrDefault(exam.getSemester().toString(), String.valueOf(exam.getSemester())));
+        examPageVO.setExamTypeStr(exam.getExamType() == null ? "" : typeMap.getOrDefault(exam.getExamType(), exam.getExamType()));
         resultMap.put("exam", examPageVO);
 
         SysGrade grade = gradeService.getById(gradeId);
@@ -514,8 +515,8 @@ public class BusinessServiceImpl implements BusinessService {
         examList.forEach(exam -> {
             Map<String, Object> tableData = new HashMap<>();
             tableData.put("year", exam.getYear());
-            tableData.put("semesterLabel", semesterMap.get(exam.getSemester().toString()));
-            tableData.put("examTypeLabel", typeMap.get(exam.getExamType()));
+            tableData.put("semesterLabel", exam.getSemester() == null ? "" : semesterMap.getOrDefault(exam.getSemester().toString(), String.valueOf(exam.getSemester())));
+            tableData.put("examTypeLabel", exam.getExamType() == null ? "" : typeMap.getOrDefault(exam.getExamType(), exam.getExamType()));
             tableData.put("examDate", exam.getExamDate());
             tableData.put("examName", exam.getName());
             Long clazzId = scoreService.getClazzIdByExamIdAndStudentId(exam.getId(), studentId);
