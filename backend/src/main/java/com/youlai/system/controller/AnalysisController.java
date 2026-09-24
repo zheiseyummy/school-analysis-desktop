@@ -312,6 +312,25 @@ public class AnalysisController {
         return Result.success(result);
     }
 
+    @Operation(summary = "年级学生进退分层")
+    @GetMapping("/progressBands")
+    public Result<Map<String, List<Map<String, Object>>>> progressBands(Long gradeId, Long currentExamId, Long previousExamId) {
+        List<SysScore> current = scoreService.getScoreListByExamIdAndGradeId(currentExamId, gradeId);
+        List<SysScore> previous = scoreService.getScoreListByExamIdAndGradeId(previousExamId, gradeId);
+        Map<Long, Double> now = current.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> old = previous.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, String> names = new HashMap<>(); studentService.listByIds(new ArrayList<>(now.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
+        List<Map<String, Object>> changes = new ArrayList<>();
+        now.forEach((id, value) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", id); row.put("studentName", names.getOrDefault(id, "")); row.put("currentScore", value); row.put("previousScore", old.getOrDefault(id, 0D)); row.put("change", value - old.getOrDefault(id, 0D)); changes.add(row); });
+        changes.sort((a, b) -> Double.compare((Double) b.get("change"), (Double) a.get("change")));
+        Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        result.put("W1", changes.stream().filter(x -> (Double) x.get("change") > 0).limit(Math.max(1, changes.size() / 5)).toList());
+        result.put("W2", changes.stream().filter(x -> (Double) x.get("change") > 0).skip(Math.max(1, changes.size() / 5)).limit(Math.max(1, changes.size() / 5)).toList());
+        result.put("L1", changes.stream().filter(x -> (Double) x.get("change") < 0).sorted((a, b) -> Double.compare((Double) a.get("change"), (Double) b.get("change"))).limit(Math.max(1, changes.size() / 5)).toList());
+        result.put("L2", changes.stream().filter(x -> (Double) x.get("change") < 0).sorted((a, b) -> Double.compare((Double) a.get("change"), (Double) b.get("change"))).skip(Math.max(1, changes.size() / 5)).limit(Math.max(1, changes.size() / 5)).toList());
+        return Result.success(result);
+    }
+
     private double average(List<SysScore> scores) {
         return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
     }
