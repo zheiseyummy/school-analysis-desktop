@@ -331,6 +331,25 @@ public class AnalysisController {
         return Result.success(result);
     }
 
+    @Operation(summary = "学生偏科排名差分析")
+    @GetMapping("/studentBiasAnalysis")
+    public Result<List<Map<String, Object>>> studentBiasAnalysis(Long gradeId, Long examId) {
+        List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
+        Map<Long, Double> totals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Integer> totalRanks = rankMap(totals);
+        Map<Long, Map<Long, Double>> subjects = scores.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.toMap(SysScore::getStudentId, SysScore::getScore, (a, b) -> a)));
+        Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
+        Map<Long, String> names = new HashMap<>(); studentService.listByIds(new ArrayList<>(totals.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
+        List<Map<String, Object>> result = new ArrayList<>();
+        totals.forEach((studentId, total) -> {
+            Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, "")); row.put("totalScore", total); row.put("totalRank", totalRanks.get(studentId));
+            List<Map<String, Object>> courseRanks = new ArrayList<>();
+            subjects.forEach((courseId, values) -> { if (values.containsKey(studentId)) { Map<Long, Integer> rank = rankMap(values); Map<String, Object> item = new LinkedHashMap<>(); item.put("courseId", courseId); item.put("courseName", courses.get(courseId) == null ? "" : courses.get(courseId).getName()); item.put("score", values.get(studentId)); item.put("rank", rank.get(studentId)); item.put("rankDifference", rank.get(studentId) - totalRanks.get(studentId)); courseRanks.add(item); } });
+            row.put("courseRanks", courseRanks); result.add(row);
+        });
+        return Result.success(result);
+    }
+
     private double average(List<SysScore> scores) {
         return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
     }

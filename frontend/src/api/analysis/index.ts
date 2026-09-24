@@ -121,3 +121,7 @@ export function getClazzSubjectBalance(params: { clazzId: number; examId: number
 export function getProgressBands(params: { gradeId: number; currentExamId: number; previousExamId: number }): AxiosPromise<any> {
   return request({ url: "/api/v1/analysis/progressBands", method: "get", params });
 }
+
+export function getStudentBiasAnalysis(params: { gradeId: number; examId: number }): AxiosPromise<any> {
+  return request({ url: "/api/v1/analysis/studentBiasAnalysis", method: "get", params });
+}
