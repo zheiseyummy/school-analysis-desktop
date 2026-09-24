@@ -112,6 +112,14 @@ export const constantRoutes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: "/quality",
+    name: "QualityEvaluation",
+    component: Layout,
+    redirect: "/quality/evaluation",
+    meta: { title: "综合素质评价", icon: "star", alwaysShow: true },
+    children: [{ path: "evaluation", name: "QualityEvaluationPage", component: () => import("@/views/quality/index.vue"), meta: { title: "综合素质评价", icon: "edit", keepAlive: true } }],
+  },
+  {
     path: "/404",
     component: () => import("@/views/error-page/404.vue"),
     meta: { hidden: true },
