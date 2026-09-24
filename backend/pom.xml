@@ -83,6 +83,13 @@
             <version>${mysql.version}</version>
         </dependency>
 
+        <!-- 生产单机数据库；MySQL 依赖暂保留，便于过渡期迁移和旧数据导入。 -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.46.1.0</version>
+        </dependency>
+
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
