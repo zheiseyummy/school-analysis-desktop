@@ -11,7 +11,7 @@ defineOptions({
   name: "GradeExamAnalysis",
   inheritAttrs: false,
 });
-import { getGradeExamAnalysisData, getTeacherAnalysisData } from "@/api/analysis";
+import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory } from "@/api/analysis";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -79,6 +79,14 @@ function handleQuery() {
         })
         .finally(() => (loading.value = false));
     }
+  });
+}
+
+function exportCurrentHistory() {
+  if (!queryParams.gradeId || !queryParams.examId) return;
+  exportStudentHistory({ gradeId: queryParams.gradeId, examIds: String(queryParams.examId) }).then((response: any) => {
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a"); link.href = url; link.download = "学生成绩综合表.xlsx"; link.click(); window.URL.revokeObjectURL(url);
   });
 }
 
@@ -266,6 +274,7 @@ const renderRightChart = () => {
             ><i-ep-search />搜索</el-button
           >
           <el-button @click="resetQuery"><i-ep-refresh />重置</el-button>
+          <el-button type="success" :disabled="!queryParams.gradeId || !queryParams.examId" @click="exportCurrentHistory">导出综合成绩</el-button>
         </el-form-item>
       </el-form>
     </div>
