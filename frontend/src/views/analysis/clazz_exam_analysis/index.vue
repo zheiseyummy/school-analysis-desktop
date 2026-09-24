@@ -85,9 +85,11 @@ function handleQuery() {
           clazz.value = data.clazz;
           exam.value = data.exam;
           courseStaticsList.value = data.courseStaticsList;
+          if (queryParams.clazzId) {
+            getClazzExamTrend({ clazzId: queryParams.clazzId }).then(({ data }) => (clazzTrendList.value = data));
+          }
           if (queryParams.clazzId && queryParams.gradeId && queryParams.examId) {
             getClazzSubjectWarnings({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, examId: queryParams.examId }).then(({ data }) => (subjectWarnings.value = data));
-            getClazzExamTrend({ clazzId: queryParams.clazzId }).then(({ data }) => (clazzTrendList.value = data));
             if (previousExamId.value && previousExamId.value !== queryParams.examId) {
               getClazzSubjectProgress({ clazzId: queryParams.clazzId, gradeId: queryParams.gradeId, currentExamId: queryParams.examId, previousExamId: previousExamId.value }).then(({ data }) => (subjectProgress.value = data));
             } else {
@@ -202,6 +204,12 @@ onMounted(() => {
 
 function conditionChange() {
   loadExamOptions();
+}
+
+function clazzChange(value: number | undefined) {
+  const group = complexClazzList.value?.find((item: any) => item.children?.some((child: any) => child.value === value));
+  queryParams.gradeId = group?.value as number | undefined;
+  conditionChange();
 }
 
 const leftCanvas = ref();
@@ -515,7 +523,7 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             clearable
             class="!w-[200px]"
             placeholder="全部"
-            @change="conditionChange"
+            @change="clazzChange"
           >
             <el-option-group
               v-for="group in complexClazzList"
