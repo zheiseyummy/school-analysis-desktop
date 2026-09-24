@@ -18,3 +18,4 @@ export function exportQualityWorkbook(clazzId: number) {
 export function getQualityFinal(clazzId: number) { return request({ url: `/api/v1/quality/final/${clazzId}`, method: "get" }); }
 export function generateQualityFinal(clazzId: number) { return request({ url: `/api/v1/quality/final/${clazzId}/generate`, method: "post" }); }
 export function lockQualityFinal(clazzId: number, locked: boolean) { return request({ url: `/api/v1/quality/final/${clazzId}/lock`, method: "post", params: { locked } }); }
+export function updateQualityFinalLevel(clazzId: number, studentId: number, dimension: string, level: string) { return request({ url: `/api/v1/quality/final/${clazzId}/level`, method: "put", data: { studentId, dimension, level } }); }

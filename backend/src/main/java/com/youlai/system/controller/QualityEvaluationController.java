@@ -192,6 +192,16 @@ public class QualityEvaluationController {
         return Result.success();
     }
 
+    @PutMapping("/final/{clazzId}/level")
+    public Result<Void> updateFinalLevel(@PathVariable Long clazzId, @RequestBody Map<String, Object> body) {
+        String level = text(body.get("level")).toUpperCase();
+        if (!List.of("A", "B", "C").contains(level)) return Result.failed("最终等级只能是 A、B 或 C");
+        List<Map<String,Object>> lockRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked FROM quality_finalization WHERE clazz_id=?", clazzId);
+        if (!lockRows.isEmpty() && ((Number) lockRows.get(0).get("isLocked")).intValue() == 1) return Result.failed("最终评定已锁定，请先解锁");
+        jdbcTemplate.update("UPDATE quality_final_result SET final_level=?, is_manually_adjusted=1 WHERE clazz_id=? AND student_id=? AND dimension=?", level, clazzId, body.get("studentId"), body.get("dimension"));
+        return Result.success();
+    }
+
     private static String automaticLevel(int rank, int size) { if (size == 0) return "B"; int a = (int)Math.ceil(size * .60); int c = (int)Math.floor(size * .05); if (rank <= a) return "A"; if (rank > size - c) return "C"; return "B"; }
 
     private void writeRosterSheet(Workbook wb, List<Map<String, Object>> students) {
