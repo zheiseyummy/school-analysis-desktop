@@ -27,7 +27,8 @@ async function restoreBackup(fileName: string) {
     { type: "warning", confirmButtonText: "确认恢复", cancelButtonText: "取消" }
   );
   await restoreLocalBackup(fileName);
-  ElMessage.success("数据库已恢复，请刷新页面");
+  ElMessage.success("数据库已恢复，当前连接已刷新，请重新打开业务页面核对数据");
+  await loadBackups();
 }
 
 function displayName(fileName: string) {

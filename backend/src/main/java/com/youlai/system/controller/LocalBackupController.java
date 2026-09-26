@@ -28,5 +28,8 @@ public class LocalBackupController {
     public Result<java.util.List<String>> list() { return Result.success(backupService.listBackups()); }
 
     @PostMapping("/restore")
-    public Result<Void> restore(@RequestParam String fileName) { backupService.restore(fileName); return Result.success(); }
+    public Result<Map<String, Object>> restore(@RequestParam String fileName) {
+        backupService.restore(fileName);
+        return Result.success(Map.of("fileName", fileName, "restartRequired", false));
+    }
 }
