@@ -240,11 +240,11 @@ public class BusinessServiceImpl implements BusinessService {
                     if (courseId != null) {
                         tableData.put("C_" + course.getId() + "_Score", score.getScore());
                     } else {
-                        tableData.put("C_" + course.getId() + "_Score", ScoreUtils.renderScore(score.getScore()));
+                        tableData.put("C_" + course.getId() + "_Score", score.getScore() == null ? "/" : ScoreUtils.renderScore(score.getScore()));
                     }
-                    String degree = scoreDegreeMap.get(score.getDegree().toString());
-                    tableData.put("C_" + course.getId() + "_Degree", ScoreUtils.renderBackground(degree));
-                    studentCourseScoreBO.getCourseScoreList().add(score.getScore());
+                    String degree = degreeLabel(score, scoreDegreeMap);
+                    tableData.put("C_" + course.getId() + "_Degree", "/".equals(degree) ? "/" : ScoreUtils.renderBackground(degree));
+                    studentCourseScoreBO.getCourseScoreList().add(score.getScore() == null ? 0D : score.getScore());
                 } else {
                     tableData.put("C_" + course.getId() + "_Score", 0D);
                     tableData.put("C_" + course.getId() + "_Degree", "/");
@@ -288,11 +288,21 @@ public class BusinessServiceImpl implements BusinessService {
         resultMap.put("studentCourseScoreList", studentCourseScoreBOList);
         if (courseId != null) {
             SysCourse course = courseList.stream().filter(it -> it.getId().equals(courseId)).findFirst().get();
-            List<Double> singleCourseScoreList = tableDataList.stream().map(it -> (Double) it.get("C_" + courseId + "_Score")).toList();
+            List<Double> singleCourseScoreList = tableDataList.stream()
+                    .map(it -> (Double) it.get("C_" + courseId + "_Score"))
+                    .filter(Objects::nonNull)
+                    .toList();
             resultMap.put("histogramData", HistogramUtils.buildHistogram(course.getFullScore().doubleValue(), singleCourseScoreList));
             resultMap.put("lineTitleArray", HistogramUtils.buildLineTitle(course.getFullScore().doubleValue()));
             resultMap.put("fullScore", course.getFullScore());
-            tableDataList.sort((o1, o2) -> Double.compare((Double) o2.get("C_" + courseId + "_Score"), (Double) o1.get("C_" + courseId + "_Score")));
+            tableDataList.sort((o1, o2) -> {
+                Double left = (Double) o1.get("C_" + courseId + "_Score");
+                Double right = (Double) o2.get("C_" + courseId + "_Score");
+                if (left == null && right == null) return 0;
+                if (left == null) return 1;
+                if (right == null) return -1;
+                return Double.compare(right, left);
+            });
         } else {
             tableDataList.sort((o1, o2) -> Double.compare((Double) o2.get("totalScore"), (Double) o1.get("totalScore")));
         }
@@ -462,9 +472,9 @@ public class BusinessServiceImpl implements BusinessService {
             courseList.forEach(course -> {
                 SysScore score = scoreMap.get("S_" + studentInfo.getStudentId() + "_" + "C_" + course.getId());
                 if (score != null) {
-                    tableData.put("C_" + course.getId() + "_Score", ScoreUtils.renderScore(score.getScore()));
-                    String degree = scoreDegreeMap.get(score.getDegree().toString());
-                    tableData.put("C_" + course.getId() + "_Degree", ScoreUtils.renderBackground(degree));
+                    tableData.put("C_" + course.getId() + "_Score", score.getScore() == null ? "/" : ScoreUtils.renderScore(score.getScore()));
+                    String degree = degreeLabel(score, scoreDegreeMap);
+                    tableData.put("C_" + course.getId() + "_Degree", "/".equals(degree) ? "/" : ScoreUtils.renderBackground(degree));
                 }
 
                 StudentScoreRankingBO singleRanking = singleRankingMap.get("S_"
@@ -579,9 +589,9 @@ public class BusinessServiceImpl implements BusinessService {
             courseList.forEach(course -> {
                 SysScore score = scoreMap.get("S_" + studentId + "_" + "C_" + course.getId());
                 if (score != null) {
-                    tableData.put("C_" + course.getId() + "_Score", ScoreUtils.renderScore(score.getScore()));
-                    String degree = scoreDegreeMap.get(score.getDegree().toString());
-                    tableData.put("C_" + course.getId() + "_Degree", ScoreUtils.renderBackground(degree));
+                    tableData.put("C_" + course.getId() + "_Score", score.getScore() == null ? "/" : ScoreUtils.renderScore(score.getScore()));
+                    String degree = degreeLabel(score, scoreDegreeMap);
+                    tableData.put("C_" + course.getId() + "_Degree", "/".equals(degree) ? "/" : ScoreUtils.renderBackground(degree));
 
                 } else {
                     tableData.put("C_" + course.getId() + "_Score", "/");
@@ -679,6 +689,20 @@ public class BusinessServiceImpl implements BusinessService {
         columns.add(ColumnUtils.buildRightFixedColumn("totalScore", "总分"));
         columns.add(ColumnUtils.buildRightFixedColumn("clazzRanking", "班级排名", 90));
         columns.add(ColumnUtils.buildRightFixedColumn("gradeRanking", "年级排名", 90));
+    }
+
+    private String degreeLabel(SysScore score, Map<String, String> scoreDegreeMap) {
+        if (score == null || score.getDegree() == null) return "/";
+        String configured = scoreDegreeMap.get(String.valueOf(score.getDegree()));
+        if (configured != null && !configured.isBlank()) return configured;
+        return switch (score.getDegree()) {
+            case 1 -> "A";
+            case 2 -> "B";
+            case 3 -> "C";
+            case 4 -> "D";
+            case 5 -> "E";
+            default -> String.valueOf(score.getDegree());
+        };
     }
 
     private List<Long> filterConfiguredCourseIds(Long examId, List<Long> courseIds) {

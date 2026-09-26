@@ -170,8 +170,9 @@ public class ExamBodyController {
     @PostMapping("/import/preview")
     public Result<ScoreImportPreviewVO> previewImport(@RequestParam Long examId,
                                                        @RequestParam(defaultValue = "KEEP") String blankPolicy,
+                                                       @RequestParam(required = false) String mapping,
                                                        MultipartFile file) throws IOException {
-        return Result.success(scoreImportPreviewService.preview(examId, file, blankPolicy));
+        return Result.success(scoreImportPreviewService.preview(examId, file, blankPolicy, mapping));
     }
 
     @Operation(summary = "确认成绩导入")

@@ -105,13 +105,13 @@ export function getScoreImportStatus(examId: number): AxiosPromise<{ scoreCount:
   });
 }
 
-export function previewScoreImport(examId: number, file: File, blankPolicy: "KEEP" | "CLEAR") {
+export function previewScoreImport(examId: number, file: File, blankPolicy: "KEEP" | "CLEAR", mapping?: Record<string, number>) {
   const formData = new FormData();
   formData.append("file", file);
   return request<ScoreImportPreview>({
     url: "/api/v1/exam_body_s/import/preview",
     method: "post",
-    params: { examId, blankPolicy },
+    params: { examId, blankPolicy, mapping: mapping && Object.keys(mapping).length ? JSON.stringify(mapping) : undefined },
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
   });

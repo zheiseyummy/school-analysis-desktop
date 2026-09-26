@@ -164,11 +164,11 @@ public class QualityEvaluationController {
     public Result<Map<String, Object>> finalResults(@PathVariable Long clazzId) {
         List<Map<String, Object>> stateRows = jdbcTemplate.queryForList("SELECT COALESCE(is_locked,0) AS isLocked, generated_at AS generatedAt, COALESCE(a_ratio,0.60) AS aRatio, COALESCE(b_ratio,0.35) AS bRatio, COALESCE(c_ratio,0.05) AS cRatio, locked_at AS lockedAt FROM quality_finalization WHERE clazz_id=?", clazzId);
         Map<String, Object> state = stateRows.isEmpty() ? Map.of("isLocked", 0) : stateRows.get(0);
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT r.student_id AS studentId, s.code, s.name, r.dimension, r.cumulative_score AS cumulativeScore, r.class_rank AS classRank, r.automatic_level AS automaticLevel, r.final_level AS finalLevel, r.available_terms AS availableTerms, r.contains_na AS containsNa FROM quality_final_result r JOIN sys_student s ON s.id=r.student_id WHERE r.clazz_id=? ORDER BY s.code, r.dimension", clazzId);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT r.student_id AS studentId, s.code, s.name, r.dimension, r.cumulative_score AS cumulativeScore, CASE WHEN r.contains_na=1 THEN 0 ELSE r.class_rank END AS classRank, CASE WHEN r.contains_na=1 THEN 'N/A' ELSE r.automatic_level END AS automaticLevel, CASE WHEN r.contains_na=1 THEN 'N/A' ELSE r.final_level END AS finalLevel, r.available_terms AS availableTerms, r.contains_na AS containsNa FROM quality_final_result r JOIN sys_student s ON s.id=r.student_id WHERE r.clazz_id=? ORDER BY s.code, r.dimension", clazzId);
         int baselineCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_final_scope WHERE clazz_id=?", Integer.class, clazzId);
         int pendingReviewCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
         int pendingStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
-        int scoredStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_final_result WHERE clazz_id=?", Integer.class, clazzId);
+        int scoredStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_final_result WHERE clazz_id=? AND contains_na=0 AND automatic_level<>'N/A'", Integer.class, clazzId);
         return Result.success(Map.of("state", state, "rows", rows, "baselineStudentCount", baselineCount, "pendingReviewCount", pendingReviewCount, "pendingStudentCount", pendingStudentCount, "scoredStudentCount", scoredStudentCount));
     }
 
@@ -204,10 +204,22 @@ public class QualityEvaluationController {
         Set<Long> pendingStudentIds = new HashSet<>();
         jdbcTemplate.queryForList("SELECT DISTINCT student_id FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", clazzId).forEach(row -> pendingStudentIds.add(((Number) row.get("student_id")).longValue()));
         List<Map<String, Object>> students = scopedStudents.stream().filter(s -> !pendingStudentIds.contains(((Number) s.get("id")).longValue())).toList();
+        Set<Long> incompleteStudentIds = new HashSet<>();
+        for (Map<String, Object> student : students) {
+            Long studentId = ((Number) student.get("id")).longValue();
+            for (String semester : QualityScoring.SEMESTERS) {
+                if (!missingDimensions(studentId, semester).isBlank()) {
+                    incompleteStudentIds.add(studentId);
+                    break;
+                }
+            }
+        }
         jdbcTemplate.update("DELETE FROM quality_final_result WHERE clazz_id=?", clazzId);
         int count = 0;
+        int eligibleStudentCount = 0;
         for (String dimension : QualityScoring.DIMENSIONS) {
             List<Map<String, Object>> values = new ArrayList<>();
+            List<Map<String, Object>> excludedValues = new ArrayList<>();
             for (Map<String, Object> student : students) {
                 List<Map<String, Object>> records = jdbcTemplate.queryForList("SELECT semester, level_or_score FROM quality_record WHERE student_id=? AND dimension=? AND deleted=0", student.get("id"), dimension);
                 double total = 0D; int available = 0; boolean containsNa = false;
@@ -216,8 +228,13 @@ public class QualityEvaluationController {
                     String level = record.map(r -> text(r.get("level_or_score"))).orElse("N/A");
                     if ("N/A".equals(level)) containsNa = true; else { available++; total += QualityScoring.score(semester, level); }
                 }
+                // 学生只要存在任一缺失学期，五个维度的最终等级都标记为 N/A。
+                containsNa = incompleteStudentIds.contains(((Number) student.get("id")).longValue());
                 Map<String,Object> value = new LinkedHashMap<>(); value.put("student", student); value.put("score", total); value.put("available", available); value.put("containsNa", containsNa); values.add(value);
+                if (containsNa) excludedValues.add(value);
             }
+            values.removeIf(value -> Boolean.TRUE.equals(value.get("containsNa")));
+            if ("思想品德".equals(dimension)) eligibleStudentCount = values.size();
             values.sort((a,b) -> Double.compare((Double)b.get("score"), (Double)a.get("score")));
             int index=0; Double previous=null; int rank=0;
             for (Map<String,Object> value: values) {
@@ -225,10 +242,16 @@ public class QualityEvaluationController {
                 String automatic = automaticLevel(rank, values.size(), aRatio, cRatio); Map<String,Object> student=(Map<String,Object>)value.get("student");
                 jdbcTemplate.update("INSERT INTO quality_final_result(clazz_id,student_id,dimension,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na) VALUES(?,?,?,?,?,?,?,0,?,?)", clazzId, student.get("id"), dimension, score, rank, automatic, automatic, value.get("available"), Boolean.TRUE.equals(value.get("containsNa")) ? 1 : 0); count++;
             }
+            // 有任一缺失学期的学生不参加最终等级比例和排名，最终等级直接标记为 N/A。
+            for (Map<String, Object> value : excludedValues) {
+                Map<String, Object> student = (Map<String, Object>) value.get("student");
+                jdbcTemplate.update("INSERT INTO quality_final_result(clazz_id,student_id,dimension,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na) VALUES(?,?,?,?,?,?,?,0,?,1)", clazzId, student.get("id"), dimension, value.get("score"), 0, "N/A", "N/A", value.get("available"));
+                count++;
+            }
         }
         jdbcTemplate.update("INSERT INTO quality_finalization(clazz_id,is_locked,generated_at,a_ratio,b_ratio,c_ratio) VALUES(?,0,?,?,?,?) ON CONFLICT(clazz_id) DO UPDATE SET generated_at=excluded.generated_at,a_ratio=excluded.a_ratio,b_ratio=excluded.b_ratio,c_ratio=excluded.c_ratio", clazzId, LocalDateTime.now().toString(), aRatio, bRatio, cRatio);
         int pendingReviewCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quality_missing_review WHERE clazz_id=? AND status='PENDING'", Integer.class, clazzId);
-        return Result.success(Map.of("count", count, "studentCount", scopedStudents.size(), "scoredStudentCount", students.size(), "pendingReviewCount", pendingReviewCount, "pendingStudentCount", pendingStudentIds.size()));
+        return Result.success(Map.of("count", count, "studentCount", scopedStudents.size(), "scoredStudentCount", eligibleStudentCount, "pendingReviewCount", pendingReviewCount, "pendingStudentCount", pendingStudentIds.size()));
     }
 
     @PostMapping("/final/{clazzId}/lock")
@@ -268,17 +291,19 @@ public class QualityEvaluationController {
             int rowIndex = 1;
             for (Map<String,Object> student : students) {
                 Row row = resultSheet.createRow(rowIndex++); row.createCell(0).setCellValue(text(student.get("name"))); col = 1;
-                List<Map<String,Object>> resultRows = jdbcTemplate.queryForList("SELECT dimension,cumulative_score AS score,final_level AS level FROM quality_final_result WHERE clazz_id=? AND student_id=?", clazzId, student.get("id"));
+                List<Map<String,Object>> resultRows = jdbcTemplate.queryForList("SELECT dimension,cumulative_score AS score,CASE WHEN contains_na=1 THEN 'N/A' ELSE final_level END AS level FROM quality_final_result WHERE clazz_id=? AND student_id=?", clazzId, student.get("id"));
                 Map<String,Map<String,Object>> byDimension = new HashMap<>(); resultRows.forEach(item -> byDimension.put(text(item.get("dimension")), item));
-                for (String dimension : QualityScoring.DIMENSIONS) { Map<String,Object> item = byDimension.get(dimension); row.createCell(col++).setCellValue(item == null ? 0D : number(item.get("score"))); }
+                for (String dimension : QualityScoring.DIMENSIONS) { Map<String,Object> item = byDimension.get(dimension); if (item == null || "N/A".equalsIgnoreCase(text(item.get("level")))) row.createCell(col++).setCellValue("N/A"); else row.createCell(col++).setCellValue(number(item.get("score"))); }
                 for (String dimension : QualityScoring.DIMENSIONS) { Map<String,Object> item = byDimension.get(dimension); row.createCell(col++).setCellValue(item == null ? "" : text(item.get("level"))); }
                 row.createCell(col).setCellValue(text(student.get("code")));
             }
             autoSize(resultSheet, 1 + QualityScoring.DIMENSIONS.length * 2 + 1);
             Sheet configSheet = workbook.createSheet("评定配置"); Row configHeader = configSheet.createRow(0); configHeader.createCell(0).setCellValue("项目"); configHeader.createCell(1).setCellValue("值");
-            Row base = configSheet.createRow(1); base.createCell(0).setCellValue("最终参与人数"); base.createCell(1).setCellValue(students.size());
+            int eligibleStudentCount = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT student_id) FROM quality_final_result WHERE clazz_id=? AND contains_na=0 AND automatic_level<>'N/A'", Integer.class, clazzId);
+            Row base = configSheet.createRow(1); base.createCell(0).setCellValue("最终统计人数"); base.createCell(1).setCellValue(students.size());
+            Row eligible = configSheet.createRow(2); eligible.createCell(0).setCellValue("实际参与 A/B/C 人数"); eligible.createCell(1).setCellValue(eligibleStudentCount);
             String[] labels = {"A比例", "B比例", "C比例", "老师确认时间"}; Object[] values = {stateRows.get(0).get("aRatio"), stateRows.get(0).get("bRatio"), stateRows.get(0).get("cRatio"), stateRows.get(0).get("lockedAt")};
-            for (int i = 0; i < labels.length; i++) { Row r = configSheet.createRow(i + 2); r.createCell(0).setCellValue(labels[i]); if (values[i] instanceof Number n) r.createCell(1).setCellValue(n.doubleValue()); else r.createCell(1).setCellValue(text(values[i])); }
+            for (int i = 0; i < labels.length; i++) { Row r = configSheet.createRow(i + 3); r.createCell(0).setCellValue(labels[i]); if (values[i] instanceof Number n) r.createCell(1).setCellValue(n.doubleValue()); else r.createCell(1).setCellValue(text(values[i])); }
             autoSize(configSheet, 2); workbook.write(response.getOutputStream());
         }
     }

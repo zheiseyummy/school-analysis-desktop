@@ -4,6 +4,7 @@
 .tools/
 .cache/
 .test-results/
+.design/
 data/
 files/
 backup/

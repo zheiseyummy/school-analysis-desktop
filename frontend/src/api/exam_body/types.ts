@@ -166,6 +166,13 @@ export interface ScoreImportPreview {
   errorRows: number;
   changeCount: number;
   blankCellCount: number;
+  sheetName?: string;
+  headerRowNumber?: number;
+  mappingComplete?: boolean;
+  headerMappings?: Record<string, string>;
+  detectedColumnIndexes?: Record<string, number>;
+  availableColumns?: Record<string, string>;
+  mappingWarnings?: string[];
   changes: ScoreImportChange[];
   errors: string[];
 }

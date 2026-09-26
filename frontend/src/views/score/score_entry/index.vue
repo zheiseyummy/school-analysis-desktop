@@ -127,6 +127,23 @@ const previewDialog = reactive({ visible: false });
 const importPreview = ref<ScoreImportPreview>();
 const importBlankPolicy = ref<"KEEP" | "CLEAR">("KEEP");
 const importSubmitting = ref(false);
+const mappingSubmitting = ref(false);
+const manualMapping = reactive<Record<string, number | undefined>>({});
+const mappingFields = [
+  { key: "gradeName", label: "年级", required: true },
+  { key: "clazzName", label: "班级", required: true },
+  { key: "studentCode", label: "学号/考号", required: true },
+  { key: "studentName", label: "姓名", required: true },
+  { key: "chineseScore", label: "语文", required: false },
+  { key: "mathScore", label: "数学", required: false },
+  { key: "englishScore", label: "英语", required: false },
+  { key: "physicsScore", label: "物理", required: false },
+  { key: "chemistryScore", label: "化学", required: false },
+  { key: "organismScore", label: "生物", required: false },
+  { key: "geographyScore", label: "地理", required: false },
+  { key: "historyScore", label: "历史", required: false },
+  { key: "politicsScore", label: "政治/道法", required: false },
+];
 const importHistoryDialog = reactive({ visible: false });
 const importHistoryList = ref<ScoreImportBatch[]>([]);
 const importHistoryLoading = ref(false);
@@ -310,6 +327,33 @@ function resetImportFile() {
 function closeImportPreview() {
   previewDialog.visible = false;
   importPreview.value = undefined;
+  resetImportFile();
+  Object.keys(manualMapping).forEach((key) => delete manualMapping[key]);
+}
+
+function syncDetectedMapping(data: ScoreImportPreview) {
+  Object.keys(manualMapping).forEach((key) => delete manualMapping[key]);
+  Object.entries(data.detectedColumnIndexes || {}).forEach(([key, index]) => {
+    manualMapping[key] = Number(index);
+  });
+}
+
+function remapScoreImport() {
+  if (!importData.examId || !importData.file) {
+    ElMessage.warning("原始 Excel 文件已不存在，请重新选择文件");
+    return;
+  }
+  const mapping = Object.fromEntries(
+    Object.entries(manualMapping).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Number(value)])
+  ) as Record<string, number>;
+  mappingSubmitting.value = true;
+  previewScoreImport(importData.examId, importData.file, importBlankPolicy.value, mapping)
+    .then(({ data }) => {
+      importPreview.value = data;
+      syncDetectedMapping(data);
+      if (data.mappingComplete) ElMessage.success("列映射已确认，请继续核对导入差异");
+    })
+    .finally(() => (mappingSubmitting.value = false));
 }
 
 function openImportHistory() {
@@ -353,8 +397,8 @@ const handleScoreImportSubmit = useThrottleFn(() => {
       previewScoreImport(importData.examId, importData.file, importBlankPolicy.value)
         .then(({ data }) => {
           importPreview.value = data;
+          syncDetectedMapping(data);
           importDialog.visible = false;
-          resetImportFile();
           previewDialog.visible = true;
         })
         .finally(() => (importSubmitting.value = false));
@@ -767,11 +811,49 @@ const handleImportConfirm = useThrottleFn(() => {
     >
       <template v-if="importPreview">
         <el-alert
-          :type="importPreview.errorRows ? 'warning' : 'success'"
+          :type="!importPreview.mappingComplete ? 'error' : importPreview.errorRows ? 'warning' : 'success'"
           :closable="false"
           show-icon
-          :title="`共解析 ${importPreview.totalRows} 行，有效 ${importPreview.validRows} 行，错误 ${importPreview.errorRows} 行，待应用 ${importPreview.changeCount} 项变更`"
+          :title="!importPreview.mappingComplete ? '表头未完成识别，暂不能写入成绩' : `共解析 ${importPreview.totalRows} 行，有效 ${importPreview.validRows} 行，错误 ${importPreview.errorRows} 行，待应用 ${importPreview.changeCount} 项变更`"
         />
+        <div class="import-mapping-summary">
+          <div class="mapping-summary-head">
+            <strong>表头识别结果</strong>
+            <span>{{ importPreview.sheetName || "工作表" }} · 第 {{ importPreview.headerRowNumber || "—" }} 行表头</span>
+          </div>
+          <div class="mapping-tags">
+            <el-tag v-for="(source, field) in importPreview.headerMappings" :key="field" size="small" effect="plain">
+              {{ field }} ← {{ source }}
+            </el-tag>
+            <span v-if="!Object.keys(importPreview.headerMappings || {}).length" class="muted">未识别到可用列</span>
+          </div>
+          <div v-if="importPreview.mappingWarnings?.length" class="mapping-warnings">
+            <div v-for="warning in importPreview.mappingWarnings" :key="warning">{{ warning }}</div>
+          </div>
+        </div>
+        <el-alert
+          v-if="!importPreview.mappingComplete"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="可以在下方手动指定列，确认后重新预览。未完成映射不会写入成绩。"
+        />
+        <div v-if="!importPreview.mappingComplete" class="manual-mapping-panel">
+          <div class="manual-mapping-grid">
+            <div v-for="field in mappingFields" :key="field.key" class="manual-mapping-item">
+              <span>{{ field.label }}<em v-if="field.required">*</em></span>
+              <el-select v-model="manualMapping[field.key]" clearable filterable size="small" placeholder="请选择原始列">
+                <el-option
+                  v-for="(label, index) in importPreview.availableColumns"
+                  :key="index"
+                  :label="`${label}（第 ${Number(index) + 1} 列）`"
+                  :value="Number(index)"
+                />
+              </el-select>
+            </div>
+          </div>
+          <el-button type="primary" plain :loading="mappingSubmitting" @click="remapScoreImport">按映射重新预览</el-button>
+        </div>
         <div class="preview-tip">
           空白处理：{{ importPreview.blankPolicy === "KEEP" ? "保留原成绩" : "清除原成绩" }}；空白不会自动判为缺考或 0 分。
         </div>
@@ -803,7 +885,7 @@ const handleImportConfirm = useThrottleFn(() => {
       </template>
       <template #footer>
         <el-button @click="closeImportPreview">取消</el-button>
-        <el-button type="primary" :loading="importSubmitting" :disabled="!importPreview || !importPreview.changeCount" @click="handleImportConfirm">确认提交有效变更</el-button>
+        <el-button type="primary" :loading="importSubmitting" :disabled="!importPreview || !importPreview.mappingComplete || !importPreview.changeCount" @click="handleImportConfirm">确认提交有效变更</el-button>
       </template>
     </el-dialog>
 
@@ -872,5 +954,85 @@ const handleImportConfirm = useThrottleFn(() => {
 .preview-error {
   padding: 3px 8px;
   color: var(--el-color-danger);
+}
+
+.import-mapping-summary {
+  padding: 12px 14px;
+  margin: 12px 0;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+}
+
+.mapping-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.mapping-summary-head strong {
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+}
+
+.mapping-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mapping-warnings {
+  padding-top: 8px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.manual-mapping-panel {
+  padding: 12px 14px;
+  margin: 12px 0;
+  border: 1px dashed var(--el-color-primary-light-5);
+  border-radius: 6px;
+  background: var(--el-color-primary-light-9);
+}
+
+.manual-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.manual-mapping-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.manual-mapping-item > span {
+  flex: 0 0 72px;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+}
+
+.manual-mapping-item em {
+  margin-left: 2px;
+  color: var(--el-color-danger);
+  font-style: normal;
+}
+
+.manual-mapping-item .el-select {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .manual-mapping-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>
