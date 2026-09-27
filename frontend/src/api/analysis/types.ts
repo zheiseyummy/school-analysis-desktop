@@ -195,6 +195,7 @@ export interface StudentScoreAnalysisQuery {
   year?: number;
   clazzId?: number;
   studentId?: number;
+  examId?: number;
   courseId?: number;
 }
 

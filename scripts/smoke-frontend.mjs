@@ -94,5 +94,12 @@ try {
 } finally {
   if (command && socket?.readyState === WebSocket.OPEN) await command("Browser.close").catch(() => {});
   socket?.close();
-  if (browser.exitCode === null) browser.kill();
+  if (browser.exitCode === null) {
+    browser.kill();
+    await new Promise((resolve) => browser.once("exit", resolve));
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try { await fs.rm(profile, { recursive: true, force: true }); break; }
+    catch { await delay(100); }
+  }
 }

@@ -2,7 +2,8 @@
 import { StudentScoreAnalysisQuery } from "@/api/analysis/types";
 import { getComplexClazzOptions } from "@/api/clazz";
 import { getStudentOptions } from "@/api/student";
-import { exportStudentAnalysis, getStudentScoreAnalysisData } from "@/api/analysis/index";
+import { exportStudentAnalysis, exportStudentAnalysisBatch, exportStudentAnalysisPdf, getStudentScoreAnalysisData } from "@/api/analysis/index";
+import { getSelfExamOptions } from "@/api/exam";
 import { CoursePageVO } from "@/api/course/types";
 import { TabsPaneContext } from "element-plus";
 defineOptions({
@@ -11,6 +12,7 @@ defineOptions({
 });
 const complexClazzList = ref<OptionType[]>(); //携带年级的班级下拉数据源
 const studentList = ref<OptionType[]>(); //学生下拉数据源
+const examList = ref<OptionType[]>([]);
 const queryFormRef = ref(ElForm);
 
 const queryParams = reactive<StudentScoreAnalysisQuery>({});
@@ -24,6 +26,7 @@ const rules = reactive({
   year: [{ required: true, message: "请选择年度", trigger: "blur" }],
   clazzId: [{ required: true, message: "请选择班级", trigger: "blur" }],
   studentId: [{ required: true, message: "请选择学生", trigger: "blur" }],
+  examId: [{ required: true, message: "请选择考试", trigger: "blur" }],
 });
 
 const courseList = ref<CoursePageVO[]>();
@@ -50,15 +53,52 @@ async function loadComplexClazzOptions() {
 /** 加载学生下拉数据源 */
 async function loadStudentOptions() {
   if (queryParams.clazzId && queryParams.year) {
-    getStudentOptions(queryParams.clazzId!, queryParams.year).then(
-      (response) => {
-        studentList.value = response.data;
-      }
-    );
+    const clazzId = queryParams.clazzId;
+    const year = queryParams.year;
+    const response = await getStudentOptions(clazzId, year);
+    if (queryParams.clazzId === clazzId && queryParams.year === year) {
+      studentList.value = response.data;
+    }
   }
 }
-function conditionChange() {
+
+function clearAnalysisResults() {
+  columns.value = [];
+  tableDataList.value = [];
+  courseList.value = [];
+}
+
+function yearChange() {
+  queryParams.clazzId = undefined;
+  queryParams.studentId = undefined;
+  queryParams.examId = undefined;
+  studentList.value = [];
+  examList.value = [];
+  clearAnalysisResults();
+}
+
+async function clazzChange() {
+  queryParams.studentId = undefined;
+  queryParams.examId = undefined;
+  studentList.value = [];
+  examList.value = [];
+  clearAnalysisResults();
   loadStudentOptions();
+  if (queryParams.clazzId) {
+    const clazzId = queryParams.clazzId;
+    const { data } = await getSelfExamOptions(clazzId);
+    if (queryParams.clazzId === clazzId) examList.value = data ?? [];
+  }
+}
+
+function examChange() {
+  clearAnalysisResults();
+  if (queryParams.studentId && queryParams.examId) handleQuery();
+}
+
+function studentChange() {
+  clearAnalysisResults();
+  if (queryParams.studentId && queryParams.examId) handleQuery();
 }
 
 function handleQuery() {
@@ -85,8 +125,8 @@ function handleQuery() {
 }
 
 function handleExport() {
-  if (!queryParams.studentId || !studentOverview.value.rows.length) return;
-  exportStudentAnalysis({ studentId: queryParams.studentId }).then((response: any) => {
+  if (!queryParams.studentId || !queryParams.examId || !studentOverview.value.rows.length) return;
+  exportStudentAnalysis({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => {
     const contentDisposition = response.headers?.["content-disposition"] ?? "";
     const encodedName = contentDisposition.split("filename=")[1]?.replace(/^"|"$/g, "");
     const fileName = encodedName ? decodeURIComponent(encodedName) : "学生个人分析.xlsx";
@@ -99,8 +139,28 @@ function handleExport() {
   });
 }
 
+function downloadBinary(response: any, fallback: string) {
+  const contentDisposition = response.headers?.["content-disposition"] ?? "";
+  const encodedName = contentDisposition.split("filename=")[1]?.replace(/^"|"$/g, "");
+  const fileName = encodedName ? decodeURIComponent(encodedName) : fallback;
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a"); link.href = url; link.download = fileName; link.click(); window.URL.revokeObjectURL(url);
+}
+
+function handleExportPdf() {
+  if (!queryParams.studentId || !queryParams.examId) return;
+  exportStudentAnalysisPdf({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => downloadBinary(response, "学生个人成绩分析.pdf"));
+}
+
+function handleBatchExport() {
+  if (!queryParams.clazzId || !queryParams.examId) return;
+  exportStudentAnalysisBatch({ clazzId: queryParams.clazzId, examId: queryParams.examId, format: "both" }).then((response: any) => downloadBinary(response, "学生个人成绩分析报告.zip"));
+}
+
 function resetQuery() {
   queryFormRef.value.resetFields();
+  studentList.value = [];
+  examList.value = [];
   columns.value = [];
   tableDataList.value = [];
   courseList.value = [];
@@ -130,7 +190,7 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             format="YYYY"
             value-format="YYYY"
             placeholder="请选择考试年度"
-            @change="conditionChange"
+            @change="yearChange"
           />
         </el-form-item>
         <el-form-item label="班级" prop="clazzId">
@@ -139,7 +199,7 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             clearable
             class="!w-[200px]"
             placeholder="全部"
-            @change="conditionChange"
+            @change="clazzChange"
           >
             <el-option-group
               v-for="group in complexClazzList"
@@ -155,13 +215,18 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             </el-option-group>
           </el-select>
         </el-form-item>
+        <el-form-item label="考试" prop="examId">
+          <el-select v-model="queryParams.examId" clearable class="!w-[220px]" placeholder="请选择考试" @change="examChange">
+            <el-option v-for="item in examList" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="学生" prop="studentId">
           <el-select
             v-model="queryParams.studentId"
             clearable
             class="!w-[200px]"
             placeholder="全部"
-            @change="handleQuery"
+            @change="studentChange"
           >
             <el-option
               v-for="item in studentList"
@@ -176,7 +241,9 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
             ><i-ep-search />搜索</el-button
           >
           <el-button @click="resetQuery"><i-ep-refresh />重置</el-button>
-          <el-button type="success" :disabled="!queryParams.studentId || !studentOverview.rows.length" @click="handleExport"><i-ep-download />导出个人分析</el-button>
+          <el-button type="success" :disabled="!queryParams.studentId || !queryParams.examId || !studentOverview.rows.length" @click="handleExport"><i-ep-download />导出 Excel</el-button>
+          <el-button type="warning" :disabled="!queryParams.studentId || !queryParams.examId || !studentOverview.rows.length" @click="handleExportPdf"><i-ep-document />导出 PDF</el-button>
+          <el-button type="info" :disabled="!queryParams.clazzId || !queryParams.examId" @click="handleBatchExport"><i-ep-files />批量导出班级</el-button>
         </el-form-item>
       </el-form>
     </div>

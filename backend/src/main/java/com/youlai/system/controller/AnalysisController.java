@@ -34,16 +34,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.ModelAndView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 考试分析控制器
@@ -71,6 +77,7 @@ public class AnalysisController {
     private final SysArrangeService arrangeService;
     private final SysTeacherService teacherService;
     private final SysStudentService studentService;
+    private final StudentPersonalReportService studentPersonalReportService;
 
     @Operation(summary = "班级考试维度数据列表")
     @GetMapping("/clazzExamAnalysisData")
@@ -515,44 +522,64 @@ public class AnalysisController {
         ExcelWriter writer = ExcelUtil.getWriter(true); writer.write(rows, true); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"); String suffix = "物理".equals(direction) ? "物理方向" : "历史".equals(direction) ? "历史方向" : "全科"; response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生多次考试综合成绩-" + suffix + ".xlsx", "UTF-8")); writer.flush(response.getOutputStream(), true); writer.close();
     }
 
-    @Operation(summary = "学生个人分析导出")
+    @Operation(summary = "学生个人分析模板 Excel 导出")
     @GetMapping("/studentAnalysisToExcel")
-    public void studentAnalysisToExcel(Long studentId, HttpServletResponse response) throws IOException {
-        if (studentId == null) {
-            throw new BusinessException(ResultCode.PARAM_ERROR);
+    public void studentAnalysisToExcel(Long studentId, Long examId, HttpServletResponse response) throws IOException {
+        if (studentId == null || examId == null) throw new BusinessException(ResultCode.PARAM_ERROR);
+        StudentPersonalReportService.GeneratedReport report = studentPersonalReportService.generate(studentId, examId, true, false);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(report.getFileBaseName() + ".xlsx", "UTF-8"));
+        response.getOutputStream().write(report.getExcel());
+    }
+
+    @Operation(summary = "学生个人分析四页 A4 PDF 导出")
+    @GetMapping("/studentAnalysisToPdf")
+    public void studentAnalysisToPdf(Long studentId, Long examId, HttpServletResponse response) throws IOException {
+        if (studentId == null || examId == null) throw new BusinessException(ResultCode.PARAM_ERROR);
+        StudentPersonalReportService.GeneratedReport report = studentPersonalReportService.generate(studentId, examId, false, true);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(report.getFileBaseName() + ".pdf", "UTF-8"));
+        response.getOutputStream().write(report.getPdf());
+    }
+
+    @Operation(summary = "学生个人分析批量独立文件导出")
+    @GetMapping("/studentAnalysisBatch")
+    public void studentAnalysisBatch(Long examId, Long clazzId, String studentIds, String format, HttpServletResponse response) throws IOException {
+        if (examId == null) throw new BusinessException(ResultCode.PARAM_ERROR);
+        SysExam exam = examService.getById(examId);
+        if (exam == null) throw new IllegalArgumentException("考试不存在");
+        Set<Long> ids = new TreeSet<>();
+        try {
+            if (studentIds != null) Arrays.stream(studentIds.split(",")).filter(s -> !s.isBlank()).map(String::trim).map(Long::valueOf).forEach(ids::add);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("学生编号格式不正确");
         }
-        Map<String, Object> analysis = businessService.studentAllScoreSummaryData(studentId);
-        SysStudent student = studentService.getById(studentId);
-        List<SysCourse> courses = (List<SysCourse>) analysis.getOrDefault("courseList", List.of());
-        List<Map<String, Object>> sourceRows = (List<Map<String, Object>>) analysis.getOrDefault("tableDataList", List.of());
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (Map<String, Object> source : sourceRows) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("学号", student == null ? "" : student.getCode());
-            row.put("姓名", student == null ? "" : student.getName());
-            row.put("年度", source.get("year"));
-            row.put("考试名称", source.get("examName"));
-            row.put("考试日期", source.get("examDate"));
-            row.put("年级", source.get("gradeName"));
-            row.put("班级", source.get("clazzName"));
-            row.put("总分", source.get("totalScore"));
-            row.put("班级排名", source.get("clazzRanking"));
-            row.put("年级排名", source.get("gradeRanking"));
-            for (SysCourse course : courses) {
-                if (course == null || course.getId() == null || course.getId() == -1L) continue;
-                row.put(course.getName() + "成绩", cleanExportValue(source.get("C_" + course.getId() + "_Score")));
-                row.put(course.getName() + "班级排名", source.get("C_" + course.getId() + "_ClazzRanking"));
-                row.put(course.getName() + "年级排名", source.get("C_" + course.getId() + "_GradeRanking"));
+        if (ids.isEmpty() && clazzId != null) ids.addAll(clazzStudentService.getStudentIdListBy(clazzId, exam.getYear()));
+        if (ids.isEmpty()) throw new BusinessException("请选择至少一名学生");
+        String mode = format == null || format.isBlank() ? "both" : format.toLowerCase();
+        if (!Set.of("excel", "pdf", "both").contains(mode)) throw new IllegalArgumentException("导出格式仅支持 excel、pdf 或 both");
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(output)) {
+            Set<String> usedNames = new HashSet<>();
+            for (Long studentId : ids) {
+                boolean includeExcel = "excel".equals(mode) || "both".equals(mode);
+                boolean includePdf = "pdf".equals(mode) || "both".equals(mode);
+                StudentPersonalReportService.GeneratedReport report = studentPersonalReportService.generate(studentId, examId, includeExcel, includePdf);
+                String base = report.getFileBaseName();
+                if (!usedNames.add(base)) base = base + "_" + studentId;
+                if (includeExcel) addZip(zip, base + ".xlsx", report.getExcel());
+                if (includePdf) addZip(zip, base + ".pdf", report.getPdf());
             }
-            rows.add(row);
+            zip.finish();
+            response.setContentType("application/zip");
+            response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生个人成绩分析报告.zip", "UTF-8"));
+            response.getOutputStream().write(output.toByteArray());
         }
-        ExcelWriter writer = ExcelUtil.getWriter(true);
-        writer.write(rows, true);
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8");
-        String name = student == null || student.getName() == null ? "学生个人分析" : student.getName() + "-个人分析";
-        response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(name + ".xlsx", "UTF-8"));
-        writer.flush(response.getOutputStream(), true);
-        writer.close();
+    }
+
+    private void addZip(ZipOutputStream zip, String name, byte[] content) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(content);
+        zip.closeEntry();
     }
 
     /**

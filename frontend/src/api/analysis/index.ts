@@ -216,9 +216,27 @@ export function exportStudentHistory(params: { gradeId: number; examIds: string 
   });
 }
 
-export function exportStudentAnalysis(params: { studentId: number }) {
+export function exportStudentAnalysis(params: { studentId: number; examId: number }) {
   return request({
     url: "/api/v1/analysis/studentAnalysisToExcel",
+    method: "get",
+    params,
+    responseType: "arraybuffer",
+  });
+}
+
+export function exportStudentAnalysisPdf(params: { studentId: number; examId: number }) {
+  return request({
+    url: "/api/v1/analysis/studentAnalysisToPdf",
+    method: "get",
+    params,
+    responseType: "arraybuffer",
+  });
+}
+
+export function exportStudentAnalysisBatch(params: { examId: number; clazzId?: number; studentIds?: string; format?: "excel" | "pdf" | "both" }) {
+  return request({
+    url: "/api/v1/analysis/studentAnalysisBatch",
     method: "get",
     params,
     responseType: "arraybuffer",
