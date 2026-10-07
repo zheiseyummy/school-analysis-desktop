@@ -22,7 +22,7 @@ import javax.sql.DataSource;
 @Service
 public class LocalDatabaseBackupService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
-    private static final String BACKUP_FILE_PATTERN = "school_\\d{8}_\\d{6}\\.db";
+    private static final String BACKUP_FILE_PATTERN = "(?:school_\\d{8}_\\d{6}|school_pre_migration_v\\d+_to_v\\d+_\\d{8}_\\d{6}_\\d{3})\\.db";
     private final DataSource dataSource;
     @Value("${spring.datasource.url:jdbc:sqlite:./data/school.db}")
     private String datasourceUrl;

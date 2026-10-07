@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS quality_roster_entry (
 );
 CREATE TABLE IF NOT EXISTS quality_final_scope (
   id INTEGER PRIMARY KEY AUTOINCREMENT, clazz_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
-  source_sheet TEXT NOT NULL DEFAULT '九上', create_time TEXT, update_time TEXT,
+  source_sheet TEXT NOT NULL DEFAULT '九下', create_time TEXT, update_time TEXT,
   UNIQUE(clazz_id, student_id)
 );
 CREATE TABLE IF NOT EXISTS quality_missing_review (

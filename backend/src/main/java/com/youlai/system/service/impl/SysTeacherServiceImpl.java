@@ -12,13 +12,21 @@ import com.youlai.system.converter.TeacherConverter;
 import com.youlai.system.mapper.SysTeacherMapper;
 import com.youlai.system.model.bo.TeacherSexCountBO;
 import com.youlai.system.model.entity.SysTeacher;
+import com.youlai.system.model.entity.SysArrange;
+import com.youlai.system.model.entity.SysClazz;
+import com.youlai.system.model.entity.SysCourse;
 import com.youlai.system.model.form.TeacherForm;
+import com.youlai.system.model.form.ArrangeForm;
 import com.youlai.system.model.query.TeacherPageQuery;
 import com.youlai.system.model.vo.TeacherExportVO;
 import com.youlai.system.model.vo.TeacherPageVO;
 import com.youlai.system.service.SysTeacherService;
+import com.youlai.system.service.SysArrangeService;
+import com.youlai.system.service.SysClazzService;
+import com.youlai.system.service.SysCourseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,6 +36,48 @@ import java.util.stream.Collectors;
 public class SysTeacherServiceImpl extends ServiceImpl<SysTeacherMapper, SysTeacher> implements SysTeacherService {
 
     private final TeacherConverter teacherConverter;
+    private final SysArrangeService arrangeService;
+    private final SysClazzService clazzService;
+    private final SysCourseService courseService;
+
+    @Override
+    public List<ArrangeForm> getTeacherArrangements(Long teacherId) {
+        return arrangeService.list(new LambdaQueryWrapper<SysArrange>()
+                        .eq(SysArrange::getTeacherId, teacherId)
+                        .eq(SysArrange::getStatus, 1)
+                        .orderByAsc(SysArrange::getClazzId)
+                        .orderByAsc(SysArrange::getCourseId))
+                .stream().map(item -> {
+                    ArrangeForm form = new ArrangeForm();
+                    form.setId(item.getId());
+                    form.setClazzId(item.getClazzId());
+                    form.setCourseId(item.getCourseId());
+                    form.setTeacherId(item.getTeacherId());
+                    form.setStatus(item.getStatus());
+                    form.setSort(item.getSort());
+                    form.setRemark(item.getRemark());
+                    return form;
+                }).toList();
+    }
+
+    @Override
+    @Transactional
+    public boolean replaceTeacherArrangements(Long teacherId, List<ArrangeForm> arrangements) {
+        arrangeService.remove(new LambdaQueryWrapper<SysArrange>().eq(SysArrange::getTeacherId, teacherId));
+        if (arrangements == null || arrangements.isEmpty()) return true;
+        arrangements.stream().filter(item -> item.getClazzId() != null && item.getCourseId() != null)
+                .forEach(item -> {
+                    SysArrange entity = new SysArrange();
+                    entity.setClazzId(item.getClazzId());
+                    entity.setCourseId(item.getCourseId());
+                    entity.setTeacherId(teacherId);
+                    entity.setStatus(1);
+                    entity.setSort(item.getSort());
+                    entity.setRemark(item.getRemark());
+                    arrangeService.save(entity);
+                });
+        return true;
+    }
 
 
     private LambdaQueryWrapper<SysTeacher> builderQuery(TeacherPageQuery queryParams) {
@@ -48,7 +98,26 @@ public class SysTeacherServiceImpl extends ServiceImpl<SysTeacherMapper, SysTeac
 
         //查询数据
         Page<SysTeacher> teacherPage = this.page(new Page<>(pageNum, pageSize), builderQuery(queryParams));
-        return teacherConverter.entity2Page(teacherPage);
+        Page<TeacherPageVO> result = teacherConverter.entity2Page(teacherPage);
+        attachTeachingInfo(result.getRecords());
+        return result;
+    }
+
+    /** 为教师列表补充任教班级和学科，来源于现有教学安排关系。 */
+    private void attachTeachingInfo(List<TeacherPageVO> teachers) {
+        if (teachers == null || teachers.isEmpty()) return;
+        Set<Long> teacherIds = teachers.stream().map(TeacherPageVO::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        List<SysArrange> arrangements = arrangeService.list(new LambdaQueryWrapper<SysArrange>().in(SysArrange::getTeacherId, teacherIds).eq(SysArrange::getStatus, 1));
+        Map<Long, String> clazzNames = clazzService.listByIds(arrangements.stream().map(SysArrange::getClazzId).filter(Objects::nonNull).distinct().toList())
+                .stream().collect(Collectors.toMap(SysClazz::getId, SysClazz::getName, (a, b) -> a));
+        Map<Long, String> courseNames = courseService.listByIds(arrangements.stream().map(SysArrange::getCourseId).filter(Objects::nonNull).distinct().toList())
+                .stream().collect(Collectors.toMap(SysCourse::getId, SysCourse::getName, (a, b) -> a));
+        Map<Long, List<SysArrange>> byTeacher = arrangements.stream().collect(Collectors.groupingBy(SysArrange::getTeacherId));
+        teachers.forEach(teacher -> {
+            List<SysArrange> items = byTeacher.getOrDefault(teacher.getId(), List.of());
+            teacher.setClazzNames(items.stream().map(SysArrange::getClazzId).map(clazzNames::get).filter(StrUtil::isNotBlank).distinct().sorted().collect(Collectors.joining("、")));
+            teacher.setCourseNames(items.stream().map(SysArrange::getCourseId).map(courseNames::get).filter(StrUtil::isNotBlank).distinct().sorted().collect(Collectors.joining("、")));
+        });
     }
 
     @Override

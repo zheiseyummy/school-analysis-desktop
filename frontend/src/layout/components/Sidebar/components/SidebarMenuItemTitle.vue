@@ -24,10 +24,18 @@ defineProps({
 
 <style lang="scss" scoped>
 .sub-el-icon {
-  width: 14px !important;
-  margin-right: 0 !important;
-  font-size: 14px !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin-right: 7px !important;
+  font-size: 17px !important;
   color: currentcolor;
+  vertical-align: -3px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.el-menu-item:hover .sub-el-icon,
+.el-sub-menu__title:hover .sub-el-icon {
+  transform: translateY(-1px);
 }
 
 .hideSidebar {

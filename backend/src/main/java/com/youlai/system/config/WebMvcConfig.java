@@ -9,6 +9,7 @@ import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.validator.HibernateValidator;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,10 +28,15 @@ import java.util.TimeZone;
 @Configuration
 @Slf4j
 public class WebMvcConfig implements WebMvcConfigurer {
+    private final String filesDirectory;
+
+    public WebMvcConfig(@Value("${oss.local.directory:files}") String filesDirectory) {
+        this.filesDirectory = filesDirectory;
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String filesRoot = java.nio.file.Paths.get("files").toAbsolutePath().normalize().toUri().toString();
+        String filesRoot = java.nio.file.Paths.get(filesDirectory).toAbsolutePath().normalize().toUri().toString();
         registry.addResourceHandler("/files/**").addResourceLocations(filesRoot);
     }
 

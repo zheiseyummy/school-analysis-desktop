@@ -3,6 +3,11 @@ server:
   address: 127.0.0.1
   port: 8989
 
+app:
+  storage:
+    # Tauri will set this to its per-user application data directory.
+    root: ${SCORE_ANALYSIS_HOME:.}
+
 spring:
   application:
     name: score-analysis-local
@@ -15,7 +20,7 @@ spring:
     time-zone: GMT+8
   datasource:
     driver-class-name: org.sqlite.JDBC
-    url: ${LOCAL_DB_URL:jdbc:sqlite:./data/school.db}
+    url: ${LOCAL_DB_URL:jdbc:sqlite:${SCORE_ANALYSIS_HOME:.}/data/school.db}
     username:
     password:
   sql:
@@ -33,4 +38,8 @@ mybatis-plus:
 oss:
   type: local
   local:
-    directory: files
+    directory: ${LOCAL_FILES_DIR:${SCORE_ANALYSIS_HOME:.}/files}
+
+logging:
+  file:
+    path: ${LOCAL_LOG_DIR:${SCORE_ANALYSIS_HOME:.}/logs}

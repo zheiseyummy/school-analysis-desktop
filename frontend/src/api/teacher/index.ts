@@ -1,6 +1,7 @@
 import request from "@/utils/request";
 import { AxiosPromise } from "axios";
 import { TeacherQuery, TeacherPageVO, TeacherForm } from "./types";
+import type { ArrangeForm } from "@/api/arrange/types";
 
 /**
  * 获取教师分页列表
@@ -124,5 +125,22 @@ export function importTeacher(file: File) {
     headers: {
       "Content-Type": "multipart/form-data",
     },
+  });
+}
+
+/** 获取教师任教班级与学科 */
+export function getTeacherArrangements(id: number) {
+  return request<ArrangeForm[]>({
+    url: "/api/v1/teachers/" + id + "/arrangements",
+    method: "get",
+  });
+}
+
+/** 保存教师任教班级与学科 */
+export function replaceTeacherArrangements(id: number, data: ArrangeForm[]) {
+  return request({
+    url: "/api/v1/teachers/" + id + "/arrangements",
+    method: "put",
+    data,
   });
 }

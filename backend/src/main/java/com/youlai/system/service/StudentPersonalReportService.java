@@ -181,7 +181,7 @@ public class StudentPersonalReportService {
         Map<Long, CourseConfig> configMap = config.stream().collect(Collectors.toMap(CourseConfig::getCourseId, x -> x, (a, b) -> a));
         List<SysScore> countedScores = currentStudentScores.values().stream()
                 .filter(this::isNormalScore)
-                .filter(score -> configMap.get(score.getCourseId()) != null && Integer.valueOf(1).equals(configMap.get(score.getCourseId()).getCountInTotal()))
+                .filter(score -> configMap.get(score.getCourseId()) != null && countsInTotal(configMap.get(score.getCourseId())))
                 .toList();
         Double totalScore = countedScores.isEmpty() ? null : countedScores.stream().mapToDouble(SysScore::getScore).sum();
         Integer classRankValue = totalScore == null || clazzRank == null ? null : clazzRank.getStudentRank();
@@ -195,7 +195,7 @@ public class StudentPersonalReportService {
         List<SubjectRow> subjects = new ArrayList<>();
         for (CourseConfig c : config) {
             SysScore score = currentStudentScores.get(c.getCourseId());
-            Double scoreValue = score == null ? null : score.getScore();
+            Double scoreValue = isNormalScore(score) ? score.getScore() : null;
             String status = statusLabel(score);
             double rate = scoreValue == null || c.getFullScore() == null || c.getFullScore() == 0 ? Double.NaN : scoreValue / c.getFullScore();
             Double gradeAverage = averageForCourse(currentGradeScores, c.getCourseId());
@@ -226,7 +226,7 @@ public class StudentPersonalReportService {
             Map<Long, StudentScoreRankingBO> cr = rowClazzId == null ? Map.of() : scoreService.getStudentSummaryScoreRanking(exam.getId(), rowClazzId).stream().collect(Collectors.toMap(StudentScoreRankingBO::getStudentId, x -> x, (a, b) -> a));
             Map<Long, StudentScoreRankingBO> gr = rowGradeId == null ? Map.of() : scoreService.getGradeStudentSummaryScoreRanking(exam.getId(), rowGradeId).stream().collect(Collectors.toMap(StudentScoreRankingBO::getStudentId, x -> x, (a, b) -> a));
             StudentScoreRankingBO c = cr.get(studentId); StudentScoreRankingBO g = gr.get(studentId);
-            List<SysScore> countedScores = studentScoreMap.values().stream().filter(this::isNormalScore).filter(score -> rowConfig.stream().anyMatch(config -> Objects.equals(config.getCourseId(), score.getCourseId()) && Integer.valueOf(1).equals(config.getCountInTotal()))).toList();
+            List<SysScore> countedScores = studentScoreMap.values().stream().filter(this::isNormalScore).filter(score -> rowConfig.stream().anyMatch(config -> Objects.equals(config.getCourseId(), score.getCourseId()) && countsInTotal(config))).toList();
             Double total = countedScores.isEmpty() ? null : countedScores.stream().mapToDouble(SysScore::getScore).sum();
             rows.add(new HistoryRow(exam.getId(), exam.getName(), total, averageTotal(gradeScope, rowConfig), total == null || c == null ? null : c.getStudentRank(), total == null || g == null ? null : g.getStudentRank(), exam.getExamDate(), applicableFullScore(rowConfig, studentScoreMap)));
         }
@@ -243,14 +243,15 @@ public class StudentPersonalReportService {
     }
 
     private Double averageForCourse(List<SysScore> scores, Long courseId) { return scores.stream().filter(x -> Objects.equals(x.getCourseId(), courseId) && isNormalScore(x)).mapToDouble(SysScore::getScore).average().stream().boxed().findFirst().orElse(null); }
-    private Double averageTotal(List<SysScore> scores, List<CourseConfig> config) { Map<Long, CourseConfig> map = config.stream().collect(Collectors.toMap(CourseConfig::getCourseId, x -> x, (a, b) -> a)); return scores.stream().filter(this::isNormalScore).filter(x -> map.get(x.getCourseId()) != null && Integer.valueOf(1).equals(map.get(x.getCourseId()).getCountInTotal())).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore))).values().stream().mapToDouble(Double::doubleValue).average().stream().boxed().findFirst().orElse(null); }
-    private boolean isNormalScore(SysScore score) { return score != null && score.getScore() != null && (score.getStatus() == null || ScoreStatus.NORMAL.equals(score.getStatus())); }
+    private Double averageTotal(List<SysScore> scores, List<CourseConfig> config) { Map<Long, CourseConfig> map = config.stream().collect(Collectors.toMap(CourseConfig::getCourseId, x -> x, (a, b) -> a)); return scores.stream().filter(this::isNormalScore).filter(x -> map.get(x.getCourseId()) != null && countsInTotal(map.get(x.getCourseId()))).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore))).values().stream().mapToDouble(Double::doubleValue).average().stream().boxed().findFirst().orElse(null); }
+    private boolean isNormalScore(SysScore score) { return score != null && score.getScore() != null && !Integer.valueOf(1).equals(score.getDeleted()) && (score.getStatus() == null || ScoreStatus.NORMAL.equals(score.getStatus())); }
     private String statusLabel(SysScore score) { if (score == null) return "缺失"; if (ScoreStatus.ABSENT.equals(score.getStatus())) return "缺考"; if (ScoreStatus.NOT_SELECTED.equals(score.getStatus())) return "未选科"; return score.getScore() == null ? "缺失" : "正常"; }
     private String degreeLabel(SysScore score, Double fullScore) { if (!isNormalScore(score)) return "/"; if (score.getDegree() != null) return switch (score.getDegree()) { case 1 -> "A"; case 2 -> "B"; case 3 -> "C"; case 4 -> "D"; case 5 -> "E"; default -> String.valueOf(score.getDegree()); }; double rate = fullScore == null || fullScore == 0 ? Double.NaN : score.getScore() / fullScore; if (Double.isNaN(rate)) return "/"; if (rate >= .9) return "A"; if (rate >= .8) return "B"; if (rate >= .7) return "C"; if (rate >= .6) return "D"; return "E"; }
 
     private SysExam previousExam(SysExam currentExam, List<SysExam> exams) { return exams.stream().filter(x -> x.getExamDate() != null && currentExam.getExamDate() != null && x.getExamDate().isBefore(currentExam.getExamDate())).max(Comparator.comparing(SysExam::getExamDate)).orElse(null); }
     private List<CourseConfig> loadCourseConfig(Long examId, Map<Long, SysScore> studentScores, Map<Long, SysCourse> courses) { if (examCourseService.hasConfig(examId)) { List<CourseConfig> config = examCourseService.getConfig(examId).stream().filter(x -> Boolean.TRUE.equals(x.getSelected())).sorted(Comparator.comparing(x -> x.getSort() == null ? 0 : x.getSort())).map(x -> new CourseConfig(x.getCourseId(), x.getCourseName(), x.getFullScore(), x.getCountInTotal())).toList(); if (!config.isEmpty()) return config; } return studentScores.keySet().stream().map(id -> { SysCourse c = courses.get(id); return new CourseConfig(id, c == null ? String.valueOf(id) : c.getName(), c == null || c.getFullScore() == null ? null : c.getFullScore().doubleValue(), 1); }).toList(); }
-    private double applicableFullScore(List<CourseConfig> config, Map<Long, SysScore> scores) { return config.stream().filter(x -> Integer.valueOf(1).equals(x.getCountInTotal())).filter(x -> { SysScore score = scores.get(x.getCourseId()); return score == null || !ScoreStatus.NOT_SELECTED.equals(score.getStatus()); }).mapToDouble(x -> x.getFullScore() == null ? 0D : x.getFullScore()).sum(); }
+    private boolean countsInTotal(CourseConfig config) { return config != null && !Integer.valueOf(0).equals(config.getCountInTotal()); }
+    private double applicableFullScore(List<CourseConfig> config, Map<Long, SysScore> scores) { return config.stream().filter(this::countsInTotal).filter(x -> { SysScore score = scores.get(x.getCourseId()); return score == null || !ScoreStatus.NOT_SELECTED.equals(score.getStatus()); }).mapToDouble(x -> x.getFullScore() == null ? 0D : x.getFullScore()).sum(); }
 
     private void fillSource(Workbook workbook, ReportData d) {
         Sheet source = workbook.getSheet("数据源_示例");

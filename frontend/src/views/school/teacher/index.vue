@@ -12,7 +12,14 @@ import {
   downloadTemplateApi,
   exportTeacher,
   importTeacher,
+  getTeacherArrangements,
+  replaceTeacherArrangements,
 } from "@/api/teacher";
+import { getGradeOptions } from "@/api/grade";
+import { getClazzPage } from "@/api/clazz";
+import { getCourseOptions } from "@/api/course";
+import type { ClazzPageVO } from "@/api/clazz/types";
+import type { ArrangeForm } from "@/api/arrange/types";
 
 import { TeacherQuery, TeacherPageVO, TeacherForm } from "@/api/teacher/types";
 import type { UploadFile } from "element-plus";
@@ -48,6 +55,58 @@ const formData = reactive<TeacherForm>({
   code: "",
   name: "",
 });
+
+type TeachingRow = ArrangeForm & { gradeId?: number; gradeName?: string; clazzName?: string; courseName?: string };
+const gradeOptions = ref<OptionType[]>([]);
+const clazzOptions = ref<ClazzPageVO[]>([]);
+const courseOptions = ref<OptionType[]>([]);
+const teachingRows = ref<TeachingRow[]>([]);
+const teachingDraft = reactive<{ gradeId?: number; clazzId?: number; courseId?: number }>({});
+
+const clazzOptionsForGrade = computed(() =>
+  clazzOptions.value.filter((item) => !teachingDraft.gradeId || item.gradeId === teachingDraft.gradeId)
+);
+
+async function loadTeachingOptions(teacherId?: number) {
+  const [grades, clazzes, courses] = await Promise.all([
+    getGradeOptions(),
+    getClazzPage({ pageNum: 1, pageSize: 1000 }),
+    getCourseOptions(),
+  ]);
+  gradeOptions.value = grades.data || [];
+  clazzOptions.value = clazzes.data?.list || [];
+  courseOptions.value = courses.data || [];
+  teachingRows.value = [];
+  if (teacherId) {
+    const { data } = await getTeacherArrangements(teacherId);
+    teachingRows.value = (data || []).map((item) => {
+      const clazz = clazzOptions.value.find((c) => c.id === item.clazzId);
+      const course = courseOptions.value.find((c) => Number(c.value) === item.courseId);
+      return { ...item, gradeId: clazz?.gradeId, gradeName: gradeOptions.value.find((g) => Number(g.value) === clazz?.gradeId)?.label, clazzName: clazz?.name, courseName: course?.label };
+    });
+  }
+}
+
+function addTeachingRow() {
+  if (!teachingDraft.gradeId || !teachingDraft.clazzId || !teachingDraft.courseId) {
+    ElMessage.warning("请先选择年级、班级和任教学科");
+    return;
+  }
+  if (teachingRows.value.some((item) => item.clazzId === teachingDraft.clazzId && item.courseId === teachingDraft.courseId)) {
+    ElMessage.warning("该班级的该学科已经配置");
+    return;
+  }
+  const clazz = clazzOptions.value.find((c) => c.id === teachingDraft.clazzId);
+  const course = courseOptions.value.find((c) => Number(c.value) === teachingDraft.courseId);
+  const grade = gradeOptions.value.find((g) => Number(g.value) === teachingDraft.gradeId);
+  teachingRows.value.push({ clazzId: teachingDraft.clazzId, courseId: teachingDraft.courseId, status: 1, teacherId: formData.id, gradeId: teachingDraft.gradeId, gradeName: grade?.label, clazzName: clazz?.name, courseName: course?.label });
+  teachingDraft.clazzId = undefined;
+  teachingDraft.courseId = undefined;
+}
+
+function removeTeachingRow(index: number) {
+  teachingRows.value.splice(index, 1);
+}
 
 const rules = reactive({
   name: [{ required: true, message: "请输入教师名称", trigger: "blur" }],
@@ -93,7 +152,8 @@ function openDialog(type: string, teacherId?: number) {
   dialog.visible = true;
   dialog.type = type;
   if (dialog.type === "teacher-form") {
-    dialog.width = 800;
+    dialog.width = 980;
+    loadTeachingOptions(teacherId);
     if (teacherId) {
       dialog.title = "修改教师";
       getTeacherForm(teacherId).then(({ data }) => {
@@ -101,6 +161,7 @@ function openDialog(type: string, teacherId?: number) {
       });
     } else {
       dialog.title = "新增教师";
+      Object.assign(formData, { id: undefined, code: "", name: "", sex: undefined, phone: undefined, status: 1 });
     }
   } else if (dialog.type === "teacher-import") {
     // 教师导入弹窗
@@ -118,6 +179,7 @@ function handleSubmit() {
         const teacherId = formData.id;
         if (teacherId) {
           updateTeacher(teacherId, formData)
+            .then(() => replaceTeacherArrangements(teacherId, teachingRows.value.map(({ clazzId, courseId, status, sort, remark }) => ({ clazzId, courseId, status, sort, remark, teacherId: teacherId }))))
             .then(() => {
               ElMessage.success("修改成功");
               closeDialog();
@@ -126,6 +188,11 @@ function handleSubmit() {
             .finally(() => (loading.value = false));
         } else {
           addTeacher(formData)
+            .then((response: any) => {
+              const savedId = response.data?.id || formData.id;
+              if (!savedId) return;
+              return replaceTeacherArrangements(savedId, teachingRows.value.map(({ clazzId, courseId, status, sort, remark }) => ({ clazzId, courseId, status, sort, remark, teacherId: savedId })));
+            })
             .then(() => {
               ElMessage.success("新增成功");
               closeDialog();
@@ -167,6 +234,10 @@ function resetForm() {
   formData.id = undefined;
   formData.sort = 1;
   formData.status = 1;
+  teachingRows.value = [];
+  teachingDraft.gradeId = undefined;
+  teachingDraft.clazzId = undefined;
+  teachingDraft.courseId = undefined;
 }
 
 /** 删除教师 */
@@ -333,6 +404,18 @@ onMounted(() => {
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column align="center" label="教师工号" prop="code" />
         <el-table-column label="教师姓名" prop="name" />
+        <el-table-column label="所带班级" min-width="180">
+          <template #default="scope">
+            <span v-if="scope.row.clazzNames" class="teacher-class-list">{{ scope.row.clazzNames }}</span>
+            <el-text v-else type="info">暂未配置</el-text>
+          </template>
+        </el-table-column>
+        <el-table-column label="任教学科" min-width="140">
+          <template #default="scope">
+            <span v-if="scope.row.courseNames">{{ scope.row.courseNames }}</span>
+            <el-text v-else type="info">—</el-text>
+          </template>
+        </el-table-column>
         <el-table-column
           align="center"
           label="性别"
@@ -427,6 +510,26 @@ onMounted(() => {
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="任教班级">
+          <div class="teaching-picker">
+            <el-select v-model="teachingDraft.gradeId" clearable placeholder="选择年级" class="teaching-picker__grade" @change="teachingDraft.clazzId = undefined">
+              <el-option v-for="item in gradeOptions" :key="item.value" :label="item.label" :value="Number(item.value)" />
+            </el-select>
+            <el-select v-model="teachingDraft.clazzId" clearable placeholder="选择班级" class="teaching-picker__clazz" :disabled="!teachingDraft.gradeId">
+              <el-option v-for="item in clazzOptionsForGrade" :key="item.id" :label="item.name" :value="Number(item.id)" />
+            </el-select>
+            <el-select v-model="teachingDraft.courseId" clearable placeholder="选择任教学科" class="teaching-picker__course">
+              <el-option v-for="item in courseOptions" :key="item.value" :label="item.label" :value="Number(item.value)" />
+            </el-select>
+            <el-button type="primary" plain @click="addTeachingRow"><i-ep-plus />添加</el-button>
+          </div>
+          <div v-if="teachingRows.length" class="teaching-tags">
+            <el-tag v-for="(item, index) in teachingRows" :key="`${item.clazzId}-${item.courseId}`" closable @close="removeTeachingRow(index)">
+              {{ item.gradeName || "未分年级" }} · {{ item.clazzName || "未命名班级" }} · {{ item.courseName || "未命名学科" }}
+            </el-tag>
+          </div>
+          <el-text v-else type="info" class="teaching-empty">请按“年级—班级—学科”添加任教关系</el-text>
+        </el-form-item>
       </el-form>
 
       <!-- 教师导入表单 -->
@@ -470,4 +573,32 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
-<style></style>
+<style scoped lang="scss">
+.teaching-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+
+  &__grade { width: 145px; }
+  &__clazz { width: 165px; }
+  &__course { width: 165px; }
+}
+
+.teaching-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.teaching-empty {
+  display: block;
+  margin-top: 8px;
+}
+
+.teacher-class-list {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+</style>

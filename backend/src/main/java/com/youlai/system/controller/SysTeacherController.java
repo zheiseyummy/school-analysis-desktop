@@ -9,6 +9,7 @@ import com.youlai.system.common.result.PageResult;
 import com.youlai.system.common.result.Result;
 import com.youlai.system.common.util.ExcelUtils;
 import com.youlai.system.model.form.TeacherForm;
+import com.youlai.system.model.form.ArrangeForm;
 import com.youlai.system.model.query.TeacherPageQuery;
 import com.youlai.system.model.vo.*;
 import com.youlai.system.plugin.easyexcel.TeacherImportListener;
@@ -41,6 +42,18 @@ public class SysTeacherController {
 
     private final SysTeacherService teacherService;
 
+    @Operation(summary = "教师任教班级与学科")
+    @GetMapping("/{teacherId}/arrangements")
+    public Result<List<ArrangeForm>> getTeacherArrangements(@PathVariable Long teacherId) {
+        return Result.success(teacherService.getTeacherArrangements(teacherId));
+    }
+
+    @Operation(summary = "保存教师任教班级与学科")
+    @PutMapping("/{teacherId}/arrangements")
+    public Result replaceTeacherArrangements(@PathVariable Long teacherId, @RequestBody List<ArrangeForm> arrangements) {
+        return Result.judge(teacherService.replaceTeacherArrangements(teacherId, arrangements));
+    }
+
 
 
     @Operation(summary = "职工分页列表")
@@ -58,7 +71,7 @@ public class SysTeacherController {
             @RequestBody @Valid TeacherForm teacherForm
     ) {
         boolean result = teacherService.saveTeacher(teacherForm);
-        return Result.judge(result);
+        return result ? Result.success(teacherForm) : Result.failed("教师保存失败");
     }
 
     @Operation(summary = "职工表单数据")

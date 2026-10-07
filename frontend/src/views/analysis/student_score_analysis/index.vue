@@ -33,14 +33,14 @@ const courseList = ref<CoursePageVO[]>();
 
 const tabsActiveName = ref();
 const studentOverview = computed(() => {
-  const rows = (tableDataList.value ?? []).filter((row: any) => row.totalScore !== undefined).slice().sort((a: any, b: any) => String(a.examDate ?? "").localeCompare(String(b.examDate ?? "")));
-  const totals = rows.map((row: any) => Number(row.totalScore ?? 0));
+  const rows = (tableDataList.value ?? []).filter((row: any) => row.totalScore !== undefined && row.totalScore !== null).slice().sort((a: any, b: any) => String(a.examDate ?? "").localeCompare(String(b.examDate ?? "")));
+  const totals = rows.map((row: any) => Number(row.totalScore));
   const courses = (courseList.value ?? []).filter((course: any) => course.id !== -1).map((course: any) => {
     const scores = rows.map((row: any) => Number(row[`C_${course.id}_Score`])).filter((score: number) => Number.isFinite(score));
     return { name: course.name, average: scores.length ? scores.reduce((sum: number, score: number) => sum + score, 0) / scores.length : 0 };
   }).sort((a: any, b: any) => b.average - a.average);
   const latest = rows[rows.length - 1]; const previous = rows[rows.length - 2];
-  return { rows, average: totals.length ? totals.reduce((sum: number, value: number) => sum + value, 0) / totals.length : 0, maximum: totals.length ? Math.max(...totals) : 0, minimum: totals.length ? Math.min(...totals) : 0, latestChange: latest && previous ? Number(latest.totalScore ?? 0) - Number(previous.totalScore ?? 0) : 0, strongest: courses.slice(0, 3), weakest: courses.slice(-3).reverse() };
+  return { rows, average: totals.length ? totals.reduce((sum: number, value: number) => sum + value, 0) / totals.length : 0, maximum: totals.length ? Math.max(...totals) : 0, minimum: totals.length ? Math.min(...totals) : 0, latestChange: latest && previous ? Number(latest.totalScore) - Number(previous.totalScore) : 0, strongest: courses.slice(0, 3), weakest: courses.slice(-3).reverse() };
 });
 
 /** 加载携带年级信息的班级下拉数据源 */

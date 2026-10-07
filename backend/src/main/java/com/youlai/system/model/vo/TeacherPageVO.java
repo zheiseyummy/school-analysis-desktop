@@ -33,6 +33,12 @@ public class TeacherPageVO {
     private Integer year;
     @Schema(description = "电话")
     private String phone;
+
+    @Schema(description = "任教班级名称列表")
+    private String clazzNames;
+
+    @Schema(description = "任教学科名称列表")
+    private String courseNames;
     @Schema(description = "头像")
     private String avatar;
 

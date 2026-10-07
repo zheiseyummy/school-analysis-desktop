@@ -46,6 +46,10 @@ export interface TeacherPageVO {
    * 电话
    */
   phone?: string;
+  /** 任教班级（多个班级以顿号分隔） */
+  clazzNames?: string;
+  /** 任教学科（多个学科以顿号分隔） */
+  courseNames?: string;
   /**
    * 头像
    */

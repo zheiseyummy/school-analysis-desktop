@@ -146,7 +146,8 @@ public class BusinessServiceImpl implements BusinessService {
 
     private double effectiveFullScore(Long examId, SysCourse course) {
         SysExamCourse setting = examCourseService.getByExamIdAndCourseId(examId, course.getId());
-        return setting != null && setting.getFullScore() != null ? setting.getFullScore() : course.getFullScore().doubleValue();
+        return setting != null && setting.getFullScore() != null
+                ? setting.getFullScore() : Optional.ofNullable(course.getFullScore()).orElse(100).doubleValue();
     }
 
     @Override
@@ -176,6 +177,7 @@ public class BusinessServiceImpl implements BusinessService {
             return new HashMap<>();
         }
         List<SysCourse> courseList = courseService.listByIds(courseIdList);
+        applyExamFullScores(examId, courseList);
         resultMap.put("courseList", courseList);
         resultMap.put("courseSize", courseList.size());
         List<Long> studentIdList = clazzStudentService.getStudentIdListBy(clazzId, exam.getYear());
@@ -244,11 +246,11 @@ public class BusinessServiceImpl implements BusinessService {
                     }
                     String degree = degreeLabel(score, scoreDegreeMap);
                     tableData.put("C_" + course.getId() + "_Degree", "/".equals(degree) ? "/" : ScoreUtils.renderBackground(degree));
-                    studentCourseScoreBO.getCourseScoreList().add(score.getScore() == null ? 0D : score.getScore());
+                    studentCourseScoreBO.getCourseScoreList().add(isNormalScore(score) ? score.getScore() : null);
                 } else {
-                    tableData.put("C_" + course.getId() + "_Score", 0D);
+                    tableData.put("C_" + course.getId() + "_Score", "/");
                     tableData.put("C_" + course.getId() + "_Degree", "/");
-                    studentCourseScoreBO.getCourseScoreList().add(0D);
+                    studentCourseScoreBO.getCourseScoreList().add(null);
                 }
 
                 StudentScoreRankingBO singleRanking = singleRankingMap.get("S_"
@@ -271,15 +273,15 @@ public class BusinessServiceImpl implements BusinessService {
                 tableData.put("totalScore", rankingBO.getStudentScore());
                 tableData.put("clazzRanking", rankingBO.getStudentRank());
             } else {
-                tableData.put("totalScore", 0D);
-                tableData.put("clazzRanking", 0);
+                tableData.put("totalScore", null);
+                tableData.put("clazzRanking", null);
             }
 
             StudentScoreRankingBO gradeRankingBO = gradeRankingMap.get(student.getId());
             if (gradeRankingBO != null) {
                 tableData.put("gradeRanking", gradeRankingBO.getStudentRank());
             } else {
-                tableData.put("gradeRanking", 0);
+                tableData.put("gradeRanking", null);
             }
 
             tableDataList.add(tableData);
@@ -289,8 +291,9 @@ public class BusinessServiceImpl implements BusinessService {
         if (courseId != null) {
             SysCourse course = courseList.stream().filter(it -> it.getId().equals(courseId)).findFirst().get();
             List<Double> singleCourseScoreList = tableDataList.stream()
-                    .map(it -> (Double) it.get("C_" + courseId + "_Score"))
-                    .filter(Objects::nonNull)
+                    .map(it -> it.get("C_" + courseId + "_Score"))
+                    .filter(Number.class::isInstance)
+                    .map(value -> ((Number) value).doubleValue())
                     .toList();
             resultMap.put("histogramData", HistogramUtils.buildHistogram(course.getFullScore().doubleValue(), singleCourseScoreList));
             resultMap.put("lineTitleArray", HistogramUtils.buildLineTitle(course.getFullScore().doubleValue()));
@@ -304,7 +307,7 @@ public class BusinessServiceImpl implements BusinessService {
                 return Double.compare(right, left);
             });
         } else {
-            tableDataList.sort((o1, o2) -> Double.compare((Double) o2.get("totalScore"), (Double) o1.get("totalScore")));
+            tableDataList.sort(this::compareTotalScoreDesc);
         }
 
         resultMap.put("columns", columns);
@@ -325,6 +328,7 @@ public class BusinessServiceImpl implements BusinessService {
         SysGrade grade = gradeService.getById(clazz.getGradeId());
         List<Long> courseIdList = filterConfiguredCourseIds(examId, arrangeService.getCourseIdListByClazzId(clazzId));
         List<SysCourse> courseList = courseService.listByIds(courseIdList);
+        applyExamFullScores(examId, courseList);
         List<Long> studentIdList = clazzStudentService.getStudentIdListBy(clazzId, exam.getYear());
         List<SysStudent> studentList = studentService.listByIds(studentIdList);
 
@@ -357,29 +361,29 @@ public class BusinessServiceImpl implements BusinessService {
                 map.put("totalScore", studentScoreRankingBO.getStudentScore());
                 map.put("clazzRanking", studentScoreRankingBO.getStudentRank());
             } else {
-                map.put("totalScore", 0);
-                map.put("clazzRanking", rankingList.size() + 1);
+                map.put("totalScore", null);
+                map.put("clazzRanking", null);
             }
             courseList.forEach(course -> {
                 SysScore score = scoreMap.get("S_" + student.getId() + "_" + "C_" + course.getId());
                 if (score != null) {
-                    map.put("C_" + course.getId() + "_Score", score.getScore());
+                    map.put("C_" + course.getId() + "_Score", isNormalScore(score) ? score.getScore() : "/");
                 } else {
-                    map.put("C_" + course.getId() + "_Score", 0D);
+                    map.put("C_" + course.getId() + "_Score", "/");
                 }
             });
 
             tableDataList.add(map);
         });
-        tableDataList.sort((o1, o2) -> Double.compare((Double) o2.get("totalScore"), (Double) o1.get("totalScore")));
+        tableDataList.sort(this::compareTotalScoreDesc);
         tableDataList.forEach(tableData -> {
             List<Object> rowList = new ArrayList<>();
-            rowList.add(tableData.get("clazzRanking"));
+            rowList.add(Optional.ofNullable(tableData.get("clazzRanking")).orElse("/"));
             rowList.add(tableData.get("studentName"));
             courseList.forEach(course -> {
                 rowList.add(tableData.get("C_" + course.getId() + "_Score"));
             });
-            rowList.add(tableData.get("totalScore"));
+            rowList.add(Optional.ofNullable(tableData.get("totalScore")).orElse("/"));
             resultList.add(rowList);
         });
 
@@ -414,6 +418,7 @@ public class BusinessServiceImpl implements BusinessService {
         List<Long> clazzIdList = clazzService.clazzIdListByGradeId(gradeId);
         List<Long> courseIdList = filterConfiguredCourseIds(examId, arrangeService.getCourseIdListByClazzIdList(clazzIdList));
         List<SysCourse> courseList = courseService.listByIds(courseIdList);
+        applyExamFullScores(examId, courseList);
 
         // 表头数据构造
         List<Column> columns = new ArrayList<>();
@@ -497,21 +502,21 @@ public class BusinessServiceImpl implements BusinessService {
                 tableData.put("totalScore", rankingBO.getStudentScore());
                 tableData.put("clazzRanking", rankingBO.getStudentRank());
             } else {
-                tableData.put("totalScore", 0D);
-                tableData.put("clazzRanking", 0);
+                tableData.put("totalScore", null);
+                tableData.put("clazzRanking", null);
             }
 
             StudentScoreRankingBO gradeRankingBO = gradeRankingMap.get(studentInfo.getStudentId());
             if (gradeRankingBO != null) {
                 tableData.put("gradeRanking", gradeRankingBO.getStudentRank());
             } else {
-                tableData.put("gradeRanking", 0);
+                tableData.put("gradeRanking", null);
             }
 
             tableDataList.add(tableData);
         });
 
-        tableDataList.sort((o1, o2) -> Double.compare((Double) o2.get("totalScore"), (Double) o1.get("totalScore")));
+        tableDataList.sort(this::compareTotalScoreDesc);
 
         resultMap.put("columns", columns);
         resultMap.put("tableDataList", tableDataList);
@@ -617,15 +622,15 @@ public class BusinessServiceImpl implements BusinessService {
                 tableData.put("totalScore", rankingBO.getStudentScore());
                 tableData.put("clazzRanking", rankingBO.getStudentRank());
             } else {
-                tableData.put("totalScore", 0D);
-                tableData.put("clazzRanking", 0);
+                tableData.put("totalScore", null);
+                tableData.put("clazzRanking", null);
             }
 
             StudentScoreRankingBO gradeRankingBO = gradeRankingMap.get(studentId);
             if (gradeRankingBO != null) {
                 tableData.put("gradeRanking", gradeRankingBO.getStudentRank());
             } else {
-                tableData.put("gradeRanking", 0);
+                tableData.put("gradeRanking", null);
             }
 
             tableDataList.add(tableData);
@@ -712,5 +717,30 @@ public class BusinessServiceImpl implements BusinessService {
                 .map(com.youlai.system.model.vo.ExamCourseConfigVO::getCourseId)
                 .collect(Collectors.toSet());
         return courseIds.stream().filter(selected::contains).toList();
+    }
+
+    private void applyExamFullScores(Long examId, List<SysCourse> courses) {
+        if (courses == null) return;
+        courses.forEach(course -> {
+            SysExamCourse setting = examCourseService.getByExamIdAndCourseId(examId, course.getId());
+            if (setting != null && setting.getFullScore() != null) {
+                course.setFullScore((int) Math.round(setting.getFullScore()));
+            }
+        });
+    }
+
+    private boolean isNormalScore(SysScore score) {
+        return score != null && score.getScore() != null
+                && !Integer.valueOf(1).equals(score.getDeleted())
+                && (score.getStatus() == null || ScoreStatus.NORMAL.equals(score.getStatus()));
+    }
+
+    private int compareTotalScoreDesc(Map<String, Object> left, Map<String, Object> right) {
+        Object leftValue = left.get("totalScore");
+        Object rightValue = right.get("totalScore");
+        if (!(leftValue instanceof Number) && !(rightValue instanceof Number)) return 0;
+        if (!(leftValue instanceof Number)) return 1;
+        if (!(rightValue instanceof Number)) return -1;
+        return Double.compare(((Number) rightValue).doubleValue(), ((Number) leftValue).doubleValue());
     }
 }

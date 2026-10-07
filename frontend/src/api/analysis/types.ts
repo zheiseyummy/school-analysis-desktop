@@ -188,7 +188,7 @@ export interface StudentCourseScoreBO {
   studentId?: number;
   studentCode?: string;
   studentName?: string;
-  courseScoreList?: number[];
+  courseScoreList?: Array<number | null>;
 }
 
 export interface StudentScoreAnalysisQuery {

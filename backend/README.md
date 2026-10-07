@@ -21,4 +21,4 @@ $env:JAVA_HOME="..\.tools\jdk-17.0.20.1+1"
 ..\.tools\apache-maven-3.9.16\bin\mvn.cmd -DskipTests package
 ```
 
-SQLite 结构以 `src/main/resources/schema.sql` 和启动迁移配置为准。当前版本不需要 MySQL、Redis、MinIO、远程对象存储或服务器部署；最终 Windows EXE 将在 Tauri 阶段接入。
+SQLite 结构以 `src/main/resources/schema.sql` 和 V1-V5 启动迁移配置为准。桌面宿主只需设置 `SCORE_ANALYSIS_HOME`，数据库、文件、备份、导出和日志就会写入该可写根目录；也可使用 `LOCAL_DB_URL`、`LOCAL_FILES_DIR`、`LOCAL_LOG_DIR` 分别覆盖。当前版本不需要 MySQL、Redis、MinIO、远程对象存储或服务器部署；最终 Windows EXE 将在 Tauri 阶段接入。

@@ -23,6 +23,7 @@ import com.youlai.system.model.entity.SysTeacher;
 import com.youlai.system.model.entity.SysStudent;
 import com.youlai.system.model.query.ClazzExamAnalysisQuery;
 import com.youlai.system.model.query.StudentScoreAnalysisQuery;
+import com.youlai.system.model.vo.ExamCourseConfigVO;
 import com.youlai.system.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -89,7 +90,7 @@ public class AnalysisController {
         Map<String, Object> resultMap = businessService.clazzExamAllCourseScoreSummaryData(examBody.getId(), query.getCourseId());
 
         List<CourseStaticsBO> courseStaticsBOList = scoreService.getCourseStaticsList(query.getExamId(), query.getClazzId());
-        return getMapResult(resultMap, courseStaticsBOList);
+        return getMapResult(resultMap, courseStaticsBOList, query.getExamId());
     }
 
     @Operation(summary = "班级某次考试成绩打印")
@@ -229,7 +230,7 @@ public class AnalysisController {
 
 
         resultMap.put("courseClazzStaticsList", courseClazzStaticsBOList);
-        return getMapResult(resultMap, courseStaticsBOList);
+        return getMapResult(resultMap, courseStaticsBOList, query.getExamId());
     }
 
 
@@ -244,7 +245,8 @@ public class AnalysisController {
     @GetMapping("/gradeInsights")
     public Result<Map<String, Object>> gradeInsights(Long gradeId, Long examId, Double excellentLine, Double passLine) {
         List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
-        Map<Long, Double> totals = scores.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore)));
+        List<SysScore> countedScores = countedNormalScores(examId, scores);
+        Map<Long, Double> totals = totalScoreMap(countedScores);
         List<Double> values = totals.values().stream().sorted().toList();
         double average = values.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
         double maximum = values.stream().mapToDouble(Double::doubleValue).max().orElse(0D);
@@ -252,19 +254,19 @@ public class AnalysisController {
         double median = values.isEmpty() ? 0D : values.get(values.size() / 2);
         double variance = values.isEmpty() ? 0D : values.stream().mapToDouble(v -> Math.pow(v - average, 2)).average().orElse(0D);
         double stdDev = Math.sqrt(variance);
-        Map<Long, SysCourse> insightCourses = courseService.listByIds(scores.stream().map(SysScore::getCourseId).filter(Objects::nonNull).distinct().toList()).stream().collect(Collectors.toMap(SysCourse::getId, c -> c));
-        double configuredMaximum = insightCourses.values().stream().map(SysCourse::getFullScore).filter(Objects::nonNull).mapToDouble(Integer::doubleValue).sum();
+        double configuredMaximum = countedFullScore(examId, countedScores);
         double fullScore = configuredMaximum > 0D ? configuredMaximum : maximum;
         double excellent = excellentLine == null ? fullScore * .85D : excellentLine;
         double pass = passLine == null ? fullScore * .60D : passLine;
         Map<Long, SysStudent> studentMap = studentService.listByIds(new ArrayList<>(totals.keySet())).stream().collect(Collectors.toMap(SysStudent::getId, s -> s));
         List<Map<String, Object>> studentRows = new ArrayList<>();
         List<Long> sortedIds = totals.entrySet().stream().sorted(Map.Entry.<Long, Double>comparingByValue().reversed()).map(Map.Entry::getKey).toList();
+        Map<Long, Integer> totalRanks = rankMap(totals);
         for (int i = 0; i < sortedIds.size(); i++) {
             Long studentId = sortedIds.get(i); double total = totals.get(studentId); Map<String, Object> row = new LinkedHashMap<>();
-            SysStudent student = studentMap.get(studentId); row.put("studentId", studentId); row.put("studentName", student == null ? "" : student.getName()); row.put("studentCode", student == null ? "" : student.getCode()); row.put("totalScore", total); row.put("rank", i + 1); row.put("percentile", sortedIds.size() <= 1 ? 100D : (sortedIds.size() - i - 1) * 100D / (sortedIds.size() - 1)); row.put("distanceToExcellent", total - excellent); row.put("distanceToPass", total - pass); row.put("stabilityScore", stdDev); studentRows.add(row);
+            SysStudent student = studentMap.get(studentId); row.put("studentId", studentId); row.put("studentName", student == null ? "" : student.getName()); row.put("studentCode", student == null ? "" : student.getCode()); row.put("totalScore", total); row.put("rank", totalRanks.get(studentId)); row.put("percentile", sortedIds.size() <= 1 ? 100D : (sortedIds.size() - i - 1) * 100D / (sortedIds.size() - 1)); row.put("distanceToExcellent", total - excellent); row.put("distanceToPass", total - pass); row.put("stabilityScore", stdDev); studentRows.add(row);
         }
-        Map<Long, List<SysScore>> classScores = scores.stream().filter(s -> s.getClazzId() != null).collect(Collectors.groupingBy(SysScore::getClazzId));
+        Map<Long, List<SysScore>> classScores = countedScores.stream().filter(s -> s.getClazzId() != null).collect(Collectors.groupingBy(SysScore::getClazzId));
         List<Map<String, Object>> classRows = new ArrayList<>();
         Map<Long, SysClazz> clazzMap = clazzService.listByIds(new ArrayList<>(classScores.keySet())).stream().collect(Collectors.toMap(SysClazz::getId, c -> c));
         classScores.forEach((clazzId, list) -> { Map<Long, Double> classTotals = list.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore))); double classAvg = classTotals.values().stream().mapToDouble(Double::doubleValue).average().orElse(0D); long excellentCount = classTotals.values().stream().filter(v -> v >= excellent).count(); long passCount = classTotals.values().stream().filter(v -> v >= pass).count(); Map<String, Object> row = new LinkedHashMap<>(); row.put("clazzId", clazzId); row.put("clazzName", clazzMap.get(clazzId) == null ? String.valueOf(clazzId) : clazzMap.get(clazzId).getName()); row.put("studentCount", classTotals.size()); row.put("averageScore", classAvg); row.put("gradeAverageScore", average); row.put("averageDifference", classAvg - average); row.put("excellentRate", classTotals.isEmpty() ? 0D : excellentCount * 1D / classTotals.size()); row.put("passRate", classTotals.isEmpty() ? 0D : passCount * 1D / classTotals.size()); classRows.add(row); });
@@ -308,8 +310,7 @@ public class AnalysisController {
     }
 
     private Map<String, Object> buildExamTrendRow(SysExam exam, List<SysScore> scores) {
-        Map<Long, Double> totals = scores.stream().filter(s -> s.getScore() != null)
-                .collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore)));
+        Map<Long, Double> totals = totalScoreMap(countedNormalScores(exam.getId(), scores));
         List<Double> values = totals.values().stream().toList();
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("examId", exam.getId());
@@ -325,16 +326,16 @@ public class AnalysisController {
     @Operation(summary = "任课教师成绩分析")
     @GetMapping("/teacherAnalysisData")
     public Result<List<Map<String, Object>>> teacherAnalysisData(Long examId, Long gradeId) {
-        List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
+        List<SysScore> scores = enabledNormalScores(examId, scoreService.getScoreListByExamIdAndGradeId(examId, gradeId));
         Map<Long, SysTeacher> teachers = teacherService.list().stream().collect(Collectors.toMap(SysTeacher::getId, it -> it));
         Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         Map<Long, SysClazz> clazzes = clazzService.list().stream().collect(Collectors.toMap(SysClazz::getId, it -> it));
         Map<String, List<SysScore>> groups = scores.stream().collect(Collectors.groupingBy(s -> s.getTeacherId() + ":" + s.getCourseId() + ":" + s.getClazzId()));
-        Map<Long, Double> gradeAvg = scores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> gradeAvg = scores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(SysScore::getScore)));
         List<Map<String, Object>> result = new ArrayList<>();
         groups.forEach((key, list) -> {
             SysScore first = list.get(0);
-            double avg = list.stream().mapToDouble(s -> s.getScore() == null ? 0D : s.getScore()).average().orElse(0D);
+            double avg = list.stream().mapToDouble(SysScore::getScore).average().orElse(0D);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("teacherId", first.getTeacherId()); row.put("teacherName", teachers.containsKey(first.getTeacherId()) ? teachers.get(first.getTeacherId()).getName() : "");
             row.put("courseId", first.getCourseId()); row.put("courseName", courses.containsKey(first.getCourseId()) ? courses.get(first.getCourseId()).getName() : "");
@@ -358,17 +359,20 @@ public class AnalysisController {
     @Operation(summary = "班级学科考试进退步分析")
     @GetMapping("/clazzSubjectProgress")
     public Result<List<Map<String, Object>>> clazzSubjectProgress(Long clazzId, Long gradeId, Long currentExamId, Long previousExamId) {
-        List<SysScore> currentClazz = scoreService.getScoreListByExamIdAndClazzId(currentExamId, clazzId);
-        List<SysScore> previousClazz = scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId);
-        List<SysScore> currentGrade = scoreService.getScoreListByExamIdAndGradeId(currentExamId, gradeId);
-        List<SysScore> previousGrade = scoreService.getScoreListByExamIdAndGradeId(previousExamId, gradeId);
+        List<SysScore> currentClazz = enabledNormalScores(currentExamId, scoreService.getScoreListByExamIdAndClazzId(currentExamId, clazzId));
+        List<SysScore> previousClazz = enabledNormalScores(previousExamId, scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId));
+        List<SysScore> currentGrade = enabledNormalScores(currentExamId, scoreService.getScoreListByExamIdAndGradeId(currentExamId, gradeId));
+        List<SysScore> previousGrade = enabledNormalScores(previousExamId, scoreService.getScoreListByExamIdAndGradeId(previousExamId, gradeId));
         Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         Map<Long, List<SysScore>> cg = currentClazz.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
         Map<Long, List<SysScore>> pg = previousClazz.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
         Map<Long, List<SysScore>> cgr = currentGrade.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
         Map<Long, List<SysScore>> pgr = previousGrade.stream().collect(Collectors.groupingBy(SysScore::getCourseId));
         List<Map<String, Object>> result = new ArrayList<>();
-        courses.forEach((courseId, course) -> {
+        Set<Long> comparedCourseIds = new HashSet<>();
+        comparedCourseIds.addAll(cg.keySet()); comparedCourseIds.addAll(pg.keySet()); comparedCourseIds.addAll(cgr.keySet()); comparedCourseIds.addAll(pgr.keySet());
+        courses.entrySet().stream().filter(entry -> comparedCourseIds.contains(entry.getKey())).forEach(entry -> {
+            Long courseId = entry.getKey(); SysCourse course = entry.getValue();
             double ca = average(cg.get(courseId)), pa = average(pg.get(courseId));
             double cga = average(cgr.get(courseId)), pga = average(pgr.get(courseId));
             Map<String, Object> row = new LinkedHashMap<>();
@@ -387,8 +391,8 @@ public class AnalysisController {
     public Result<List<Map<String, Object>>> studentProgressRanking(Long clazzId, Long currentExamId, Long previousExamId) {
         List<SysScore> current = scoreService.getScoreListByExamIdAndClazzId(currentExamId, clazzId);
         List<SysScore> previous = scoreService.getScoreListByExamIdAndClazzId(previousExamId, clazzId);
-        Map<Long, Double> currentMap = current.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
-        Map<Long, Double> previousMap = previous.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> currentMap = totalScoreMap(countedNormalScores(currentExamId, current));
+        Map<Long, Double> previousMap = totalScoreMap(countedNormalScores(previousExamId, previous));
         Map<Long, Integer> currentRanks = rankMap(currentMap);
         Map<Long, Integer> previousRanks = rankMap(previousMap);
         Map<Long, String> names = new HashMap<>();
@@ -396,21 +400,28 @@ public class AnalysisController {
         List<Map<String, Object>> result = new ArrayList<>();
         currentMap.forEach((studentId, score) -> {
             Map<String, Object> row = new LinkedHashMap<>();
-            double old = previousMap.getOrDefault(studentId, 0D);
+            Double old = previousMap.get(studentId);
             row.put("studentId", studentId); row.put("studentName", names.getOrDefault(studentId, ""));
-            row.put("currentScore", score); row.put("previousScore", old); row.put("scoreChange", score - old);
+            row.put("currentScore", score); row.put("previousScore", old); row.put("scoreChange", old == null ? null : score - old);
             row.put("currentRank", currentRanks.get(studentId)); row.put("previousRank", previousRanks.get(studentId));
-            row.put("rankChange", previousRanks.getOrDefault(studentId, currentRanks.get(studentId)) - currentRanks.get(studentId));
+            row.put("rankChange", previousRanks.containsKey(studentId) ? previousRanks.get(studentId) - currentRanks.get(studentId) : null);
             result.add(row);
         });
-        result.sort((a, b) -> Double.compare((Double) b.get("scoreChange"), (Double) a.get("scoreChange")));
+        result.sort((left, right) -> compareNullableNumberDesc(left.get("scoreChange"), right.get("scoreChange")));
         return Result.success(result);
     }
 
     private Map<Long, Integer> rankMap(Map<Long, Double> scores) {
         List<Long> ids = scores.entrySet().stream().sorted(Map.Entry.<Long, Double>comparingByValue().reversed()).map(Map.Entry::getKey).toList();
         Map<Long, Integer> ranks = new HashMap<>();
-        for (int i = 0; i < ids.size(); i++) ranks.put(ids.get(i), i + 1);
+        Double previous = null;
+        int denseRank = 0;
+        for (Long id : ids) {
+            Double value = scores.get(id);
+            if (previous == null || Double.compare(previous, value) != 0) denseRank++;
+            ranks.put(id, denseRank);
+            previous = value;
+        }
         return ranks;
     }
 
@@ -418,10 +429,10 @@ public class AnalysisController {
     @GetMapping("/clazzSubjectWarnings")
     public Result<List<Map<String, Object>>> clazzSubjectWarnings(Long clazzId, Long gradeId, Long examId, Double threshold) {
         double limit = threshold == null ? 5D : threshold;
-        List<SysScore> clazzScores = scoreService.getScoreListByExamIdAndClazzId(examId, clazzId);
-        List<SysScore> gradeScores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
-        Map<Long, Double> clazzAvg = clazzScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
-        Map<Long, Double> gradeAvg = gradeScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        List<SysScore> clazzScores = enabledNormalScores(examId, scoreService.getScoreListByExamIdAndClazzId(examId, clazzId));
+        List<SysScore> gradeScores = enabledNormalScores(examId, scoreService.getScoreListByExamIdAndGradeId(examId, gradeId));
+        Map<Long, Double> clazzAvg = clazzScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(SysScore::getScore)));
+        Map<Long, Double> gradeAvg = gradeScores.stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.averagingDouble(SysScore::getScore)));
         Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         List<Map<String, Object>> result = new ArrayList<>();
         clazzAvg.forEach((courseId, avg) -> {
@@ -437,11 +448,11 @@ public class AnalysisController {
     @Operation(summary = "班级学生偏科分析")
     @GetMapping("/clazzSubjectBalance")
     public Result<List<Map<String, Object>>> clazzSubjectBalance(Long clazzId, Long examId) {
-        List<SysScore> scores = scoreService.getScoreListByExamIdAndClazzId(examId, clazzId);
+        List<SysScore> scores = enabledNormalScores(examId, scoreService.getScoreListByExamIdAndClazzId(examId, clazzId));
         Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         Map<Long, Map<Long, Double>> studentCourse = new HashMap<>();
         scores.forEach(s -> {
-            if (s.getScore() != null) studentCourse.computeIfAbsent(s.getStudentId(), k -> new HashMap<>()).put(s.getCourseId(), s.getScore());
+            studentCourse.computeIfAbsent(s.getStudentId(), k -> new HashMap<>()).put(s.getCourseId(), s.getScore());
         });
         Map<Long, String> names = new HashMap<>();
         studentService.listByIds(new ArrayList<>(studentCourse.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
@@ -467,11 +478,11 @@ public class AnalysisController {
     public Result<Map<String, List<Map<String, Object>>>> progressBands(Long gradeId, Long currentExamId, Long previousExamId) {
         List<SysScore> current = scoreService.getScoreListByExamIdAndGradeId(currentExamId, gradeId);
         List<SysScore> previous = scoreService.getScoreListByExamIdAndGradeId(previousExamId, gradeId);
-        Map<Long, Double> now = current.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
-        Map<Long, Double> old = previous.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> now = totalScoreMap(countedNormalScores(currentExamId, current));
+        Map<Long, Double> old = totalScoreMap(countedNormalScores(previousExamId, previous));
         Map<Long, String> names = new HashMap<>(); studentService.listByIds(new ArrayList<>(now.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
         List<Map<String, Object>> changes = new ArrayList<>();
-        now.forEach((id, value) -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", id); row.put("studentName", names.getOrDefault(id, "")); row.put("currentScore", value); row.put("previousScore", old.getOrDefault(id, 0D)); row.put("change", value - old.getOrDefault(id, 0D)); changes.add(row); });
+        now.forEach((id, value) -> { Double previousValue = old.get(id); if (previousValue == null) return; Map<String, Object> row = new LinkedHashMap<>(); row.put("studentId", id); row.put("studentName", names.getOrDefault(id, "")); row.put("currentScore", value); row.put("previousScore", previousValue); row.put("change", value - previousValue); changes.add(row); });
         changes.sort((a, b) -> Double.compare((Double) b.get("change"), (Double) a.get("change")));
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         List<Map<String, Object>> gains = changes.stream().filter(x -> (Double) x.get("change") > 0).toList();
@@ -490,9 +501,9 @@ public class AnalysisController {
     @GetMapping("/studentBiasAnalysis")
     public Result<List<Map<String, Object>>> studentBiasAnalysis(Long gradeId, Long examId) {
         List<SysScore> scores = scoreService.getScoreListByExamIdAndGradeId(examId, gradeId);
-        Map<Long, Double> totals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())));
+        Map<Long, Double> totals = totalScoreMap(countedNormalScores(examId, scores));
         Map<Long, Integer> totalRanks = rankMap(totals);
-        Map<Long, Map<Long, Double>> subjects = scores.stream().filter(s -> s.getScore() != null).collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.toMap(SysScore::getStudentId, SysScore::getScore, (a, b) -> a)));
+        Map<Long, Map<Long, Double>> subjects = enabledNormalScores(examId, scores).stream().collect(Collectors.groupingBy(SysScore::getCourseId, Collectors.toMap(SysScore::getStudentId, SysScore::getScore, (a, b) -> a)));
         Map<Long, SysCourse> courses = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         Map<Long, String> names = new HashMap<>(); studentService.listByIds(new ArrayList<>(totals.keySet())).forEach(s -> names.put(s.getId(), s.getName()));
         List<Map<String, Object>> result = new ArrayList<>();
@@ -511,14 +522,17 @@ public class AnalysisController {
     @GetMapping("/studentHistoryToExcel")
     public void studentHistoryToExcel(Long gradeId, String examIds, String direction, HttpServletResponse response) throws IOException {
         List<Long> ids = Arrays.stream(examIds.split(",")).filter(s -> !s.isBlank()).map(Long::valueOf).toList();
-        List<SysScore> scores = ids.stream().flatMap(id -> scoreService.getScoreListByExamIdAndGradeId(id, gradeId).stream()).toList();
+        Map<Long, List<SysScore>> scoresByExam = ids.stream().collect(Collectors.toMap(id -> id,
+                id -> scoreService.getScoreListByExamIdAndGradeId(id, gradeId), (left, right) -> left, LinkedHashMap::new));
+        List<SysScore> scores = scoresByExam.entrySet().stream().flatMap(entry -> enabledNormalScores(entry.getKey(), entry.getValue()).stream()).toList();
+        List<SysScore> countedScores = scoresByExam.entrySet().stream().flatMap(entry -> countedNormalScores(entry.getKey(), entry.getValue()).stream()).toList();
         Map<Long, SysStudent> students = studentService.listByIds(scores.stream().map(SysScore::getStudentId).distinct().toList()).stream().collect(Collectors.toMap(SysStudent::getId, it -> it));
         Map<Long, SysExam> exams = examService.listByIds(ids).stream().collect(Collectors.toMap(SysExam::getId, it -> it));
-        Map<Long, Map<Long, Double>> totals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.groupingBy(SysScore::getExamId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore()))));
-        Map<Long, Map<Long, Map<Long, Double>>> subjectTotals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.groupingBy(SysScore::getExamId, Collectors.groupingBy(SysScore::getCourseId, Collectors.summingDouble(s -> s.getScore() == null ? 0D : s.getScore())))));
+        Map<Long, Map<Long, Double>> totals = countedScores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.groupingBy(SysScore::getExamId, Collectors.summingDouble(SysScore::getScore))));
+        Map<Long, Map<Long, Map<Long, Double>>> subjectTotals = scores.stream().collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.groupingBy(SysScore::getExamId, Collectors.groupingBy(SysScore::getCourseId, Collectors.summingDouble(SysScore::getScore)))));
         Map<Long, SysCourse> courseMap = courseService.list().stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         ArrayList<Map<String, Object>> rows = new ArrayList<>();
-        totals.forEach((studentId, values) -> { Map<String, Object> row = new LinkedHashMap<>(); SysStudent student = students.get(studentId); row.put("方向", direction == null ? "全科" : direction); row.put("学号", student == null ? "" : student.getCode()); row.put("姓名", student == null ? "" : student.getName()); row.put("学生ID", studentId); ids.forEach(id -> { String examName = exams.get(id) == null ? String.valueOf(id) : exams.get(id).getName(); row.put(examName + "-总分", values.getOrDefault(id, 0D)); Map<Long, Double> coursesForExam = subjectTotals.getOrDefault(studentId, Map.of()).getOrDefault(id, Map.of()); coursesForExam.forEach((courseId, score) -> row.put(examName + "-" + (courseMap.get(courseId) == null ? courseId : courseMap.get(courseId).getName()), score)); }); rows.add(row); });
+        students.keySet().forEach(studentId -> { Map<String, Object> row = new LinkedHashMap<>(); SysStudent student = students.get(studentId); Map<Long, Double> values = totals.getOrDefault(studentId, Map.of()); row.put("方向", direction == null ? "全科" : direction); row.put("学号", student == null ? "" : student.getCode()); row.put("姓名", student == null ? "" : student.getName()); row.put("学生ID", studentId); ids.forEach(id -> { String examName = exams.get(id) == null ? String.valueOf(id) : exams.get(id).getName(); row.put(examName + "-总分", values.get(id)); Map<Long, Double> coursesForExam = subjectTotals.getOrDefault(studentId, Map.of()).getOrDefault(id, Map.of()); coursesForExam.forEach((courseId, score) -> row.put(examName + "-" + (courseMap.get(courseId) == null ? courseId : courseMap.get(courseId).getName()), score)); }); rows.add(row); });
         ExcelWriter writer = ExcelUtil.getWriter(true); writer.write(rows, true); response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"); String suffix = "物理".equals(direction) ? "物理方向" : "历史".equals(direction) ? "历史方向" : "全科"; response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode("学生多次考试综合成绩-" + suffix + ".xlsx", "UTF-8")); writer.flush(response.getOutputStream(), true); writer.close();
     }
 
@@ -672,6 +686,7 @@ public class AnalysisController {
 
     private boolean isNormalScore(SysScore score) {
         return score != null && score.getScore() != null
+                && !Integer.valueOf(1).equals(score.getDeleted())
                 && (score.getStatus() == null || ScoreStatus.NORMAL.equals(score.getStatus()));
     }
 
@@ -690,15 +705,86 @@ public class AnalysisController {
     }
 
     private double average(List<SysScore> scores) {
-        return scores == null ? 0D : scores.stream().map(SysScore::getScore).filter(java.util.Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
+        return scores == null ? 0D : scores.stream().filter(this::isNormalScore).mapToDouble(SysScore::getScore).average().orElse(0D);
     }
 
     private double rate(List<SysScore> scores, int degree) {
-        return scores == null || scores.isEmpty() ? 0D : scores.stream().filter(s -> Integer.valueOf(degree).equals(s.getDegree())).count() * 1D / scores.size();
+        if (scores == null) return 0D;
+        List<SysScore> normalScores = scores.stream().filter(this::isNormalScore).toList();
+        return normalScores.isEmpty() ? 0D : normalScores.stream().filter(s -> Integer.valueOf(degree).equals(s.getDegree())).count() * 1D / normalScores.size();
     }
 
     private double passRate(List<SysScore> scores) {
-        return scores == null || scores.isEmpty() ? 0D : scores.stream().filter(s -> s.getDegree() != null && s.getDegree() <= 4).count() * 1D / scores.size();
+        if (scores == null) return 0D;
+        List<SysScore> normalScores = scores.stream().filter(this::isNormalScore).toList();
+        return normalScores.isEmpty() ? 0D : normalScores.stream().filter(s -> s.getDegree() != null && s.getDegree() <= 4).count() * 1D / normalScores.size();
+    }
+
+    /**
+     * 只保留本场考试启用科目的正常成绩。旧考试没有科目配置时，兼容其已有成绩科目。
+     */
+    private List<SysScore> enabledNormalScores(Long examId, List<SysScore> scores) {
+        Set<Long> enabledCourseIds = configuredCourseIds(examId, false);
+        return safeScores(scores).stream()
+                .filter(this::isNormalScore)
+                .filter(score -> enabledCourseIds == null || enabledCourseIds.contains(score.getCourseId()))
+                .toList();
+    }
+
+    /**
+     * 总分、总分排名和跨考试变化统一只使用“计入总分”的正常成绩。
+     */
+    private List<SysScore> countedNormalScores(Long examId, List<SysScore> scores) {
+        Set<Long> countedCourseIds = configuredCourseIds(examId, true);
+        return safeScores(scores).stream()
+                .filter(this::isNormalScore)
+                .filter(score -> countedCourseIds == null || countedCourseIds.contains(score.getCourseId()))
+                .toList();
+    }
+
+    /** 返回 null 表示旧考试未配置科目，应继续兼容实际存在的成绩科目。 */
+    private Set<Long> configuredCourseIds(Long examId, boolean countedOnly) {
+        if (examId == null || !examCourseService.hasConfig(examId)) return null;
+        return examCourseService.getConfig(examId).stream()
+                .filter(config -> Boolean.TRUE.equals(config.getSelected()))
+                .filter(config -> !countedOnly || !Integer.valueOf(0).equals(config.getCountInTotal()))
+                .map(ExamCourseConfigVO::getCourseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    private List<SysScore> safeScores(List<SysScore> scores) {
+        return scores == null ? List.of() : scores;
+    }
+
+    private Map<Long, Double> totalScoreMap(List<SysScore> countedScores) {
+        return safeScores(countedScores).stream()
+                .filter(score -> score.getStudentId() != null)
+                .collect(Collectors.groupingBy(SysScore::getStudentId, Collectors.summingDouble(SysScore::getScore)));
+    }
+
+    private int compareNullableNumberDesc(Object left, Object right) {
+        if (!(left instanceof Number) && !(right instanceof Number)) return 0;
+        if (!(left instanceof Number)) return 1;
+        if (!(right instanceof Number)) return -1;
+        return Double.compare(((Number) right).doubleValue(), ((Number) left).doubleValue());
+    }
+
+    private double countedFullScore(Long examId, List<SysScore> countedScores) {
+        if (examCourseService.hasConfig(examId)) {
+            return examCourseService.getConfig(examId).stream()
+                    .filter(config -> Boolean.TRUE.equals(config.getSelected()))
+                    .filter(config -> !Integer.valueOf(0).equals(config.getCountInTotal()))
+                    .map(ExamCourseConfigVO::getFullScore)
+                    .filter(Objects::nonNull)
+                    .mapToDouble(Double::doubleValue)
+                    .sum();
+        }
+        List<Long> actualCourseIds = safeScores(countedScores).stream().map(SysScore::getCourseId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (actualCourseIds.isEmpty()) return 0D;
+        return courseService.listByIds(actualCourseIds).stream().map(SysCourse::getFullScore)
+                .filter(Objects::nonNull).mapToDouble(Integer::doubleValue).sum();
     }
 
     @Operation(summary = "个人单个课程成绩分析数据列表")
@@ -708,14 +794,16 @@ public class AnalysisController {
         return Result.success(resultMap);
     }
 
-    private Result<Map<String, Object>> getMapResult(Map<String, Object> resultMap, List<CourseStaticsBO> courseStaticsBOList) {
+    private Result<Map<String, Object>> getMapResult(Map<String, Object> resultMap, List<CourseStaticsBO> courseStaticsBOList, Long examId) {
         List<SysCourse> courseList = courseService.list();
         Map<Long, SysCourse> courseMap = courseList.stream().collect(Collectors.toMap(SysCourse::getId, it -> it));
         courseStaticsBOList.forEach(courseStaticsBO -> {
             SysCourse course = courseMap.get(courseStaticsBO.getCourseId());
             if (course != null) {
                 courseStaticsBO.setCourseName(course.getName());
-                courseStaticsBO.setFullScore(course.getFullScore());
+                SysExamCourse setting = examCourseService.getByExamIdAndCourseId(examId, course.getId());
+                courseStaticsBO.setFullScore(setting != null && setting.getFullScore() != null
+                        ? (int) Math.round(setting.getFullScore()) : course.getFullScore());
             }
         });
         resultMap.put("courseStaticsList", courseStaticsBOList);
