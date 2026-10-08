@@ -1,0 +1,15 @@
+[package]
+name = "score-analysis-system"
+version = "1.1.0"
+description = "成绩分析系统本地桌面版"
+authors = ["成绩分析系统项目组"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

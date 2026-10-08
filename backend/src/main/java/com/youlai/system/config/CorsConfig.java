@@ -14,7 +14,9 @@ public class CorsConfig {
     public static final List<String> LOCAL_ORIGINS = List.of(
             "http://127.0.0.1:3000", "http://localhost:3000",
             "http://127.0.0.1:4173", "http://localhost:4173",
-            "http://127.0.0.1:8989", "http://localhost:8989");
+            "http://127.0.0.1:8989", "http://localhost:8989",
+            "http://localhost:1420", "http://127.0.0.1:1420",
+            "http://tauri.localhost", "https://tauri.localhost");
 
     @Bean
     public FilterRegistrationBean<LocalRequestFilter> localRequestFilter() {

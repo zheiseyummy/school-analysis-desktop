@@ -1,9 +1,11 @@
 **/node_modules/
 **/dist/
 **/target/
+/frontend/src-tauri/gen/
 .tools/
 .cache/
 .test-results/
+/outputs/
 .design/
 data/
 files/

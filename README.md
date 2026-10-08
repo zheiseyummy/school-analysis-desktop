@@ -1,8 +1,8 @@
 # 成绩分析系统
 
-这是一个面向个人 Windows 电脑使用的学校成绩分析系统开发仓库。系统保留 Vue 3 + Element Plus + ECharts 界面，后端使用 Spring Boot，业务数据使用本地 SQLite，目标是最终制作成 Windows 10/11 可离线运行的绿色 EXE。
+这是一个面向个人 Windows 电脑使用的成绩分析系统。系统保留 Vue 3 + Element Plus + ECharts 界面，后端使用 Spring Boot，业务数据使用本地 SQLite。当前 `1.1 beta` Windows 便携版使用 Tauri 桌面窗口显示界面，随包附带本地 Java 运行环境。
 
-> 当前版本是“本地开发运行版”，还没有完成 Tauri 和最终 EXE 打包。不要把当前 JAR 当成最终发行物。
+> `1.1 beta` 是第一代便携试用包，不是安装程序。正式成绩样表和其他 Windows 电脑离线验收仍待完成。
 
 ## 目录
 
@@ -10,6 +10,8 @@
 - `backend/`：Spring Boot 本地后端、SQLite 初始化和业务接口。
 - `docs/`：需求、进度、核对和交接文档。
 - `scripts/`：前端冒烟、接口契约和后端构建脚本。
+- `scripts/package-windows-beta.ps1`：生成 Windows 便携 beta 包。
+- `frontend/src-tauri/`：Tauri 窗口外壳和本地后端生命周期管理。
 - `启动本地前端.bat`：Windows 前端开发服务快捷启动。
 
 重要文档：
@@ -43,7 +45,7 @@
 - 学校正式版班级、年级、教师 Excel/PDF 模板。
 - 高中赋分政策、计算群体和算法。
 - 无开发环境 Windows 10/11 离线验收。
-- Tauri 随包运行时、绿色 EXE、升级和数据迁移策略。
+- 安装包/签名发布、升级和数据迁移策略。
 
 ## 在另一台 Windows 电脑继续开发
 
@@ -53,7 +55,21 @@ cd school-analysis-desktop
 git checkout master
 ```
 
-建议环境：Node.js 18+、pnpm、Java 17、Maven。仓库提供便携工具时，优先使用 `.tools` 目录；工具说明见 [scripts/README.md](scripts/README.md)。
+建议环境：Node.js 18+、pnpm、Java 17、Maven。构建 Windows Tauri 窗口版还需要 Rust stable MSVC 工具链、Visual Studio C++ Build Tools 和 Windows WebView2 Runtime。仓库提供便携工具时，优先使用 `.tools` 目录；工具说明见 [scripts/README.md](scripts/README.md)。
+
+## Windows 1.1 beta 便携包
+
+第一代试用包输出到 `outputs/成绩分析系统_1.1(beta)_Windows_x64.zip`（约 107.2 MiB）。将 ZIP 完整解压后，双击 `成绩分析系统.exe`，系统会在独立桌面窗口中打开，不会启动外部浏览器。关闭窗口会停止本次启动的本地服务。压缩包内含 Tauri 窗口程序、本地后端和 Java 运行环境，不需要预装 Node.js、Java 或 Maven。请勿单独复制 EXE。Windows 10/11 通常已安装 WebView2 Runtime；如提示缺少，请安装 Microsoft Edge WebView2 Evergreen Runtime。
+
+2026-10-08 已在开发电脑验证 Tauri release 构建和 EXE 启动：窗口标题为“成绩分析系统”，窗口响应正常，本地后端根页面返回 HTTP 200；后端 32 项测试全部通过。此版本尚未在另一台 Windows 电脑进行离线验收，也未完成学校真实成绩样表验收。发行文件仅保存在本机 `outputs/`，本轮未推送 GitHub。
+
+用户数据保存在 `%LOCALAPPDATA%\成绩分析系统`，与程序解压目录分开。要重新生成包，在本仓库根目录执行：
+
+```powershell
+pwsh -NoProfile -File .\scripts\package-windows-beta.ps1 -ReplaceExisting
+```
+
+此包用于第一轮试用；使用学校正式成绩表之前，请先用备份功能保护数据，并核对导入预览、计总分口径和学生匹配结果。首次启动会在后台启动本地 API，数据保存在 `%LOCALAPPDATA%\成绩分析系统`。
 
 安装前端依赖：
 
