@@ -110,9 +110,6 @@ function removeTeachingRow(index: number) {
 
 const rules = reactive({
   name: [{ required: true, message: "请输入教师名称", trigger: "blur" }],
-  code: [{ required: true, message: "请输入教师工号", trigger: "blur" }],
-  status: [{ required: true, message: "请选择状态", trigger: "blur" }],
-  sex: [{ required: true, message: "请选择性别", trigger: "blur" }],
   phone: [
     {
       pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/,
@@ -161,7 +158,7 @@ function openDialog(type: string, teacherId?: number) {
       });
     } else {
       dialog.title = "新增教师";
-      Object.assign(formData, { id: undefined, code: "", name: "", sex: undefined, phone: undefined, status: 1 });
+      Object.assign(formData, { id: undefined, code: "", name: "", sex: 1, phone: undefined, status: 1 });
     }
   } else if (dialog.type === "teacher-import") {
     // 教师导入弹窗
@@ -344,7 +341,7 @@ onMounted(() => {
         <el-form-item prop="keywords" label="关键字">
           <el-input
             v-model="queryParams.keywords"
-            placeholder="工号/姓名/手机号"
+            placeholder="教师姓名"
             clearable
             @keyup.enter="handleQuery"
           />
@@ -402,8 +399,11 @@ onMounted(() => {
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column align="center" label="教师工号" prop="code" />
-        <el-table-column label="教师姓名" prop="name" />
+        <el-table-column label="教师姓名" prop="name">
+          <template #default="scope">
+            <el-link type="primary" @click="openDialog('teacher-form', scope.row.id)">{{ scope.row.name }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="所带班级" min-width="180">
           <template #default="scope">
             <span v-if="scope.row.clazzNames" class="teacher-class-list">{{ scope.row.clazzNames }}</span>
@@ -414,40 +414,6 @@ onMounted(() => {
           <template #default="scope">
             <span v-if="scope.row.courseNames">{{ scope.row.courseNames }}</span>
             <el-text v-else type="info">—</el-text>
-          </template>
-        </el-table-column>
-        <el-table-column
-          align="center"
-          label="性别"
-          prop="sexLabel"
-          width="80"
-        />
-        <el-table-column align="center" label="电话" prop="phone" />
-        <!-- <el-table-column label="创建时间" prop="createTime" /> -->
-        <el-table-column label="状态" align="center" width="100">
-          <template #default="scope">
-            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-            <el-tag v-else type="info">禁用</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column fixed="right" label="操作" width="160">
-          <template #default="scope">
-            <el-button
-              type="primary"
-              size="small"
-              link
-              @click="openDialog('teacher-form', scope.row.id)"
-            >
-              <i-ep-edit />编辑
-            </el-button>
-            <el-button
-              type="primary"
-              size="small"
-              link
-              @click="handleDelete(scope.row.id)"
-            >
-              <i-ep-delete />删除
-            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -481,35 +447,9 @@ onMounted(() => {
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="教师工号" prop="code">
-              <el-input v-model="formData.code" placeholder="请输入教师工号" />
-            </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="性别" prop="sex">
-              <dictionary v-model="formData.sex" type-code="gender" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="状态" prop="status">
-              <el-radio-group v-model="formData.status">
-                <el-radio :value="1" label="正常" />
-                <el-radio :value="0" label="停用" />
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="电话" prop="phone">
-              <el-input v-model="formData.phone" placeholder="请输入电话" />
-            </el-form-item>
-          </el-col>
-        </el-row>
         <el-form-item label="任教班级">
           <div class="teaching-picker">
             <el-select v-model="teachingDraft.gradeId" clearable placeholder="选择年级" class="teaching-picker__grade" @change="teachingDraft.clazzId = undefined">
@@ -542,7 +482,6 @@ onMounted(() => {
           <el-upload
             ref="uploadRef"
             action=""
-            drag
             accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             :limit="1"
             :auto-upload="false"
@@ -550,13 +489,7 @@ onMounted(() => {
             :on-change="handleFileChange"
             :on-exceed="handleFileExceed"
           >
-            <el-icon class="el-icon--upload">
-              <i-ep-upload-filled />
-            </el-icon>
-            <div class="el-upload__text">
-              将文件拖到此处，或
-              <em>点击上传</em>
-            </div>
+            <el-button type="primary"><i-ep-upload />选择 Excel 文件</el-button>
             <template #tip>
               <div>xls/xlsx files</div>
             </template>

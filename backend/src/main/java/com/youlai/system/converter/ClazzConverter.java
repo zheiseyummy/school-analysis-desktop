@@ -17,7 +17,7 @@ import java.util.List;
 @Mapper(componentModel = "spring")
 public interface ClazzConverter {
     @Mappings({
-            @Mapping(target = "clazzTypeLabel", expression = "java(com.youlai.system.common.base.IBaseEnum.getLabelByValue(java.lang.Integer.valueOf(bo.getClazzType()), com.youlai.system.common.enums.ClazzTypeEnum.class))")
+            @Mapping(target = "clazzTypeLabel", expression = "java(clazzTypeLabel(bo.getClazzType()))")
     })
     ClazzPageVO entity2Page(SysClazz bo);
     Page<ClazzPageVO> entity2Page(Page<SysClazz> page);
@@ -34,4 +34,14 @@ public interface ClazzConverter {
 
 
     List<Option> entities2Options(List<SysClazz> clazzs);
+
+    /** Handles both the numeric legacy code and old rows that accidentally stored the visible label. */
+    default String clazzTypeLabel(String value) {
+        if (value == null || value.isBlank()) return "普通班";
+        for (com.youlai.system.common.enums.ClazzTypeEnum type : com.youlai.system.common.enums.ClazzTypeEnum.values()) {
+            if (value.equals(type.getLabel())) return type.getLabel();
+            if (value.equals(String.valueOf(type.getValue()))) return type.getLabel();
+        }
+        return value;
+    }
 }

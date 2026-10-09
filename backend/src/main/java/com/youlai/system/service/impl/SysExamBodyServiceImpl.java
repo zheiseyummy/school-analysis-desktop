@@ -8,6 +8,7 @@ import com.youlai.system.model.entity.SysExamBody;
 import com.youlai.system.model.query.ExamBodyPageQuery;
 import com.youlai.system.model.vo.ExamBodyPageVO;
 import com.youlai.system.service.SysExamBodyService;
+import com.youlai.system.service.SysClazzService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SysExamBodyServiceImpl extends ServiceImpl<SysExamBodyMapper, SysExamBody> implements SysExamBodyService {
+    private final SysClazzService clazzService;
 
     @Override
     public Page<ExamBodyPageVO> getExamBodyPage(ExamBodyPageQuery queryParams) {
@@ -61,20 +63,32 @@ public class SysExamBodyServiceImpl extends ServiceImpl<SysExamBodyMapper, SysEx
 
     @Override
     public List<Long> getExamIdListByClazzId(Long clazzId) {
-        LambdaQueryWrapper<SysExamBody> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(SysExamBody::getGradeClazzId, clazzId);
-        queryWrapper.eq(SysExamBody::getGOrC, "C");
-        queryWrapper.select(SysExamBody::getExamId);
-        return list(queryWrapper).stream().map(SysExamBody::getExamId).toList();
+        return getExamIdListByClazzIdList(List.of(clazzId));
     }
 
     @Override
     public List<Long> getExamIdListByClazzIdList(List<Long> clazzIdList) {
+        if (clazzIdList == null || clazzIdList.isEmpty()) return List.of();
+        List<Long> examIds = new java.util.ArrayList<>();
+        LambdaQueryWrapper<SysExamBody> clazzQuery = new LambdaQueryWrapper<>();
+        clazzQuery.in(SysExamBody::getGradeClazzId, clazzIdList);
+        clazzQuery.eq(SysExamBody::getGOrC, "C");
+        clazzQuery.select(SysExamBody::getExamId);
+        examIds.addAll(list(clazzQuery).stream().map(SysExamBody::getExamId).toList());
+
+        List<Long> gradeIds = clazzService.listByIds(clazzIdList).stream()
+                .map(com.youlai.system.model.entity.SysClazz::getGradeId).filter(java.util.Objects::nonNull).distinct().toList();
+        for (Long gradeId : gradeIds) examIds.addAll(getExamIdListByGradeId(gradeId));
+        return examIds.stream().distinct().toList();
+    }
+
+    @Override
+    public List<Long> getExamIdListByGradeId(Long gradeId) {
         LambdaQueryWrapper<SysExamBody> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.in(SysExamBody::getGradeClazzId, clazzIdList);
-        queryWrapper.eq(SysExamBody::getGOrC, "C");
+        queryWrapper.eq(SysExamBody::getGradeClazzId, gradeId);
+        queryWrapper.eq(SysExamBody::getGOrC, "G");
         queryWrapper.select(SysExamBody::getExamId);
-        return list(queryWrapper).stream().map(SysExamBody::getExamId).toList();
+        return list(queryWrapper).stream().map(SysExamBody::getExamId).distinct().toList();
     }
 
     @Override

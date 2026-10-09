@@ -15,7 +15,6 @@ public class ClazzForm {
     private String code;
 
     @Schema(description="班级名称")
-    @NotBlank(message = "班级名称不能为空")
     private String name;
     @Schema(description="班主任")
     private Long managerId;
@@ -23,11 +22,13 @@ public class ClazzForm {
     @Schema(description="年级Id")
     private Long gradeId;
 
+    @Schema(description="年级编号/年份，用于直接输入并解析已有年级")
+    private String gradeName;
+
     @Schema(description="班级排序")
     private Integer sort;
 
     @Schema(description = "班级类型")
-    @NotBlank(message = "班级类型不能为空")
     private String clazzType;
 
     @Schema(description="班级状态(1-正常；0-停用)")

@@ -54,7 +54,7 @@ public class SysStudentServiceImpl extends ServiceImpl<SysStudentMapper, SysStud
         int pageNum = queryParams.getPageNum();
         int pageSize = queryParams.getPageSize();
         List<Long> studentIdList = queryParams.getStudentIdList();
-        if (queryParams.getClazzId() != null && CollectionUtil.isEmpty(studentIdList)) {
+        if ((queryParams.getClazzId() != null || queryParams.getGradeId() != null) && CollectionUtil.isEmpty(studentIdList)) {
             return new Page<>(pageNum, pageSize);
         }
         LambdaQueryWrapper<SysStudent> queryWrapper = builderQuery(queryParams);
@@ -66,7 +66,7 @@ public class SysStudentServiceImpl extends ServiceImpl<SysStudentMapper, SysStud
     @Override
     public List<SysStudent> getStudentExport(StudentPageQuery queryParams) {
         List<Long> studentIdList = queryParams.getStudentIdList();
-        if (queryParams.getClazzId() != null && CollectionUtil.isEmpty(studentIdList)) {
+        if ((queryParams.getClazzId() != null || queryParams.getGradeId() != null) && CollectionUtil.isEmpty(studentIdList)) {
             return new ArrayList<>();
         }
         LambdaQueryWrapper<SysStudent> queryWrapper = builderQuery(queryParams);
@@ -78,6 +78,8 @@ public class SysStudentServiceImpl extends ServiceImpl<SysStudentMapper, SysStud
     public boolean saveStudent(StudentForm studentForm) {
 
         String code = studentForm.getCode();
+        if (studentForm.getSex() == null) studentForm.setSex(1);
+        if (studentForm.getStatus() == null) studentForm.setStatus(1);
         long codeCount = this.count(new LambdaQueryWrapper<SysStudent>().eq(SysStudent::getCode, code));
         Assert.isTrue(codeCount == 0, "学生编号已存在");
 
@@ -95,6 +97,9 @@ public class SysStudentServiceImpl extends ServiceImpl<SysStudentMapper, SysStud
     public boolean updateStudent(Long studentId, StudentForm studentForm) {
 
         String code = studentForm.getCode();
+        SysStudent existing = this.getById(studentId);
+        if (existing != null && studentForm.getSex() == null) studentForm.setSex(existing.getSex());
+        if (existing != null && studentForm.getStatus() == null) studentForm.setStatus(existing.getStatus());
         long codeCount = this.count(new LambdaQueryWrapper<SysStudent>().eq(SysStudent::getCode, code).ne(SysStudent::getId, studentId));
         Assert.isTrue(codeCount == 0, "学生编号已存在");
 

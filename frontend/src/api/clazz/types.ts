@@ -99,7 +99,7 @@ export interface ClazzForm {
   /**
    * 班级名称
    */
-  name: string;
+  name?: string;
 
   /**
    * 管理者
@@ -110,6 +110,8 @@ export interface ClazzForm {
    * 年级ID
    */
   gradeId?: number;
+  /** 年级编号或年份，可直接输入，不必从选项中选择 */
+  gradeName?: string;
   /**
    * 班级类型
    */

@@ -15,14 +15,11 @@ export const useSettingsStore = defineStore("setting", () => {
     defaultSettings.fixedHeader
   );
   // 布局模式：left-左侧模式(默认) top-顶部模式 mix-混合模式
-  const layout = useStorage<string>("layout", defaultSettings.layout);
+  const layout = ref<string>("left");
   // 主题颜色
-  const themeColor = useStorage<string>(
-    "themeColor",
-    defaultSettings.themeColor
-  );
+  const themeColor = ref(defaultSettings.themeColor);
   // 主题：light-亮色(默认) dark-暗色
-  const theme = useStorage<string>("theme", defaultSettings.theme);
+  const theme = ref<string>(defaultSettings.theme);
   // 是否开启水印
   const watermarkEnabled = useStorage<boolean>(
     "watermarkEnabled",

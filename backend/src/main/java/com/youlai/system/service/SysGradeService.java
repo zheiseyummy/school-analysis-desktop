@@ -71,4 +71,6 @@ public interface SysGradeService extends IService<SysGrade> {
     Map<Long, String> allGradeIdNameMap();
 
     SysGrade getByGradeName(String gradeName);
+
+    SysGrade getByGradeCode(String gradeCode);
 }

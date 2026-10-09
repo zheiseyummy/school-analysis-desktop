@@ -121,6 +121,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         component: () => import("@/views/analysis/course_analysis/index.vue"),
         meta: { title: "学科分析", icon: "el-icon-histogram", keepAlive: true },
       },
+      {
+        path: "local-score",
+        name: "LocalScoreAnalysis",
+        component: () => import("@/views/analysis/local_score_analysis/index.vue"),
+        meta: { title: "独立成绩分析", icon: "el-icon-document-checked", keepAlive: true },
+      },
     ],
   },
   {

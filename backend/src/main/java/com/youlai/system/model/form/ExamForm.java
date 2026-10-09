@@ -20,7 +20,6 @@ public class ExamForm {
     private String name;
 
     @Schema(description="考试编码")
-    @NotBlank(message = "考试编码不能为空")
     private String code;
 
     @Schema(description = "学期")
@@ -33,7 +32,6 @@ public class ExamForm {
     private Integer year;
 
     @Schema(description = "考试类型")
-    @NotBlank(message = "考试类型不能为空")
     private String examType;
     @Schema(description = "考试日期")
     @JsonInclude(value = JsonInclude.Include.NON_NULL)

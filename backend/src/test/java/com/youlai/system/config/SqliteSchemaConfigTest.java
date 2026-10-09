@@ -41,8 +41,12 @@ class SqliteSchemaConfigTest {
             assertThat(singleString(statement, "SELECT status FROM sys_score WHERE id=1")).isEqualTo("NORMAL");
             assertThat(singleInt(statement, "SELECT count_in_total FROM sys_exam_course WHERE id=1")).isEqualTo(1);
             assertThat(singleString(statement, "SELECT source_sheet FROM quality_final_scope WHERE id=1")).isEqualTo("九下");
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sys_dict WHERE type_code='semester' AND deleted=0")).isEqualTo(2);
             assertThat(hasColumn(statement, "quality_final_result", "available_terms")).isTrue();
             assertThat(hasColumn(statement, "quality_final_result", "contains_na")).isTrue();
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_score_dataset'")).isEqualTo(1);
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_score_value'")).isEqualTo(1);
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'local_quality_%'")).isEqualTo(7);
         }
 
         Path backupDirectory = temporaryDirectory.resolve("backup");
@@ -54,13 +58,15 @@ class SqliteSchemaConfigTest {
         LocalDatabaseBackupService backupService = new LocalDatabaseBackupService(dataSource);
         ReflectionTestUtils.setField(backupService, "datasourceUrl", url);
         assertThat(backupService.listBackups()).singleElement()
-                .asString().startsWith("school_pre_migration_v0_to_v5_");
+                .asString().startsWith("school_pre_migration_v0_to_v7_");
 
         config.initialize();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             assertThat(singleInt(statement, "SELECT COUNT(*) FROM app_schema_version"))
                     .isEqualTo(SqliteSchemaConfig.CURRENT_SCHEMA_VERSION);
             assertThat(singleInt(statement, "SELECT COUNT(*) FROM sys_grade WHERE id=1")).isEqualTo(1);
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sys_dict WHERE type_code='semester' AND deleted=0")).isEqualTo(2);
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'local_score_%'")).isEqualTo(4);
         }
         try (var files = Files.list(backupDirectory)) {
             assertThat(files.filter(path -> path.getFileName().toString().startsWith("school_pre_migration_")).count())
@@ -81,6 +87,8 @@ class SqliteSchemaConfigTest {
                     .isEqualTo(SqliteSchemaConfig.CURRENT_SCHEMA_VERSION);
             assertThat(singleString(statement, "SELECT dflt_value FROM pragma_table_info('quality_final_scope') WHERE name='source_sheet'"))
                     .contains("九下");
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sys_dict WHERE type_code='semester' AND deleted=0")).isEqualTo(2);
+            assertThat(singleString(statement, "SELECT name FROM sys_dict WHERE type_code='semester' AND value='1' AND deleted=0")).isEqualTo("上学期");
         }
         assertThat(Files.exists(temporaryDirectory.resolve("backup"))).isFalse();
     }

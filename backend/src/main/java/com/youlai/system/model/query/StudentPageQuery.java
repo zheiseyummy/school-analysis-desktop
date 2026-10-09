@@ -21,6 +21,9 @@ public class StudentPageQuery extends BasePageQuery {
     @Schema(description = "班级ID")
     private Long clazzId;
 
+    @Schema(description = "年级ID")
+    private Long gradeId;
+
     @Schema(description = "学生ID集合列表")
     private List<Long> studentIdList;
 }

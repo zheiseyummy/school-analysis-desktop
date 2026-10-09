@@ -132,4 +132,11 @@ public class SysGradeServiceImpl extends ServiceImpl<SysGradeMapper, SysGrade> i
         queryWrapper.eq(SysGrade::getName, gradeName);
         return getOne(queryWrapper);
     }
+
+    @Override
+    public SysGrade getByGradeCode(String gradeCode) {
+        LambdaQueryWrapper<SysGrade> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysGrade::getCode, gradeCode);
+        return getOne(queryWrapper);
+    }
 }

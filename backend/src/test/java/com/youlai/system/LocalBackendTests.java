@@ -1,14 +1,21 @@
 package com.youlai.system;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.youlai.system.model.form.ClazzForm;
+import com.youlai.system.model.query.ClazzPageQuery;
 import com.youlai.system.model.entity.SysStudent;
 import com.youlai.system.model.form.StudentForm;
 import com.youlai.system.model.form.TeacherForm;
+import com.youlai.system.model.query.ExamPageQuery;
 import com.youlai.system.model.vo.TeacherImportVO;
 import com.youlai.system.plugin.easyexcel.TeacherImportListener;
+import com.youlai.system.controller.LocalScoreAnalysisController;
+import com.youlai.system.controller.StandaloneQualityEvaluationController;
 import com.youlai.system.service.SysClazzStudentService;
+import com.youlai.system.service.SysClazzService;
 import com.youlai.system.service.SysStudentService;
 import com.youlai.system.service.SysTeacherService;
+import com.youlai.system.service.SysExamService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,8 +23,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -33,6 +51,10 @@ class LocalBackendTests {
     @Autowired SysStudentService students;
     @Autowired SysTeacherService teachers;
     @Autowired SysClazzStudentService memberships;
+    @Autowired SysClazzService clazzes;
+    @Autowired SysExamService exams;
+    @Autowired LocalScoreAnalysisController localScoreAnalysis;
+    @Autowired StandaloneQualityEvaluationController standaloneQuality;
 
     @BeforeEach
     void schema() {
@@ -53,6 +75,270 @@ class LocalBackendTests {
                 (id BIGINT AUTO_INCREMENT PRIMARY KEY, student_id BIGINT, clazz_id BIGINT, year INT)
                 """);
         jdbc.execute("DELETE FROM sys_clazz_student");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS sys_clazz
+                (id BIGINT AUTO_INCREMENT PRIMARY KEY, code VARCHAR(255) NOT NULL,
+                 name VARCHAR(255) NOT NULL, sort INT, status INT, manager_id BIGINT,
+                 grade_id BIGINT, clazz_type VARCHAR(32), deleted INT DEFAULT 0,
+                 create_time TIMESTAMP, update_time TIMESTAMP)
+                """);
+        jdbc.execute("DELETE FROM sys_clazz");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS sys_grade (id BIGINT AUTO_INCREMENT PRIMARY KEY, code VARCHAR(255), name VARCHAR(255), sort INT, status INT, manager_id BIGINT, stage VARCHAR(32), deleted INT DEFAULT 0, create_time TIMESTAMP, update_time TIMESTAMP)");
+        jdbc.execute("DELETE FROM sys_grade");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS sys_exam (id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(255),code VARCHAR(255),year INT,semester INT,exam_type VARCHAR(64),exam_date TIMESTAMP,sort INT,status INT,deleted INT DEFAULT 0)");
+        jdbc.execute("DELETE FROM sys_exam");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS sys_exam_body (id BIGINT AUTO_INCREMENT PRIMARY KEY,exam_id BIGINT,grade_clazz_id BIGINT,g_or_c VARCHAR(8))");
+        jdbc.execute("DELETE FROM sys_exam_body");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_score_dataset (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) UNIQUE, stage VARCHAR(64), grade_name VARCHAR(128), class_name VARCHAR(128), created_at VARCHAR(64))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_score_exam (id BIGINT AUTO_INCREMENT PRIMARY KEY, dataset_id BIGINT, name VARCHAR(255), source_file VARCHAR(255), imported_at VARCHAR(64), UNIQUE(dataset_id,name))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_score_student (id BIGINT AUTO_INCREMENT PRIMARY KEY, dataset_id BIGINT, student_code VARCHAR(64), name VARCHAR(128), created_at VARCHAR(64))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_score_value (id BIGINT AUTO_INCREMENT PRIMARY KEY, exam_id BIGINT, student_id BIGINT, subject VARCHAR(64), score DOUBLE, status VARCHAR(32), UNIQUE(exam_id,student_id,subject))");
+        jdbc.execute("DELETE FROM local_score_value");
+        jdbc.execute("DELETE FROM local_score_student");
+        jdbc.execute("DELETE FROM local_score_exam");
+        jdbc.execute("DELETE FROM local_score_dataset");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_dataset (id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(255) UNIQUE,source_file VARCHAR(255),created_at VARCHAR(64),is_locked INT DEFAULT 0,generated_at VARCHAR(64),locked_at VARCHAR(64),a_ratio DOUBLE DEFAULT 0.6,b_ratio DOUBLE DEFAULT 0.35,c_ratio DOUBLE DEFAULT 0.05)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_student (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,source_code VARCHAR(64),name VARCHAR(128),UNIQUE(dataset_id,source_code))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_record (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),dimension VARCHAR(64),level_or_score VARCHAR(8),UNIQUE(dataset_id,student_id,semester,dimension))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_roster_entry (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),UNIQUE(dataset_id,student_id,semester))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_final_scope (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,source_sheet VARCHAR(64),UNIQUE(dataset_id,student_id))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_missing_review (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),status VARCHAR(64),missing_dimensions VARCHAR(255),remark VARCHAR(255),updated_at VARCHAR(64),UNIQUE(dataset_id,student_id,semester))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_final_result (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,dimension VARCHAR(64),cumulative_score DOUBLE,class_rank INT,automatic_level VARCHAR(16),final_level VARCHAR(16),is_manually_adjusted INT DEFAULT 0,available_terms INT DEFAULT 0,contains_na INT DEFAULT 0,UNIQUE(dataset_id,student_id,dimension))");
+        for (String table : new String[]{"local_quality_final_result", "local_quality_missing_review", "local_quality_final_scope", "local_quality_roster_entry", "local_quality_record", "local_quality_student", "local_quality_dataset"}) jdbc.execute("DELETE FROM " + table);
+    }
+
+    @Test
+    void newClassUsesNumericLegacyTypeCodeAndCanBeReadBack() {
+        ClazzForm form = new ClazzForm();
+        form.setCode("6");
+        form.setGradeId(1L);
+
+        assertThat(clazzes.saveClazz(form)).isTrue();
+        assertThat(form.getClazzType()).isEqualTo("1");
+
+        ClazzPageQuery query = new ClazzPageQuery();
+        query.setPageNum(1);
+        query.setPageSize(10);
+        assertThat(clazzes.getClazzPage(query).getRecords())
+                .singleElement()
+                .satisfies(row -> assertThat(row.getClazzTypeLabel()).isEqualTo("普通班"));
+    }
+
+    @Test
+    void classListRemainsReadableWhenAnOldRowContainsTheVisibleTypeLabel() {
+        jdbc.update("INSERT INTO sys_clazz(code,name,grade_id,clazz_type,deleted) VALUES(?,?,?,?,0)",
+                "7", "7班", 1L, "普通班");
+
+        ClazzPageQuery query = new ClazzPageQuery();
+        query.setPageNum(1);
+        query.setPageSize(10);
+        assertThat(clazzes.getClazzPage(query).getRecords())
+                .singleElement()
+                .satisfies(row -> assertThat(row.getClazzTypeLabel()).isEqualTo("普通班"));
+    }
+
+    @Test
+    void classCreationAcceptsYearAndClassCodeAsTypedValues() {
+        jdbc.update("INSERT INTO sys_grade(id,code,name,stage,deleted) VALUES(?,?,?,?,0)", 2026L, "2026", "2026", "初中");
+        ClazzForm form = new ClazzForm();
+        form.setGradeName("2026");
+        form.setCode("01");
+
+        assertThat(clazzes.saveClazz(form)).isTrue();
+        assertThat(form.getGradeId()).isEqualTo(2026L);
+        assertThat(jdbc.queryForObject("SELECT code FROM sys_clazz WHERE grade_id=2026", String.class)).isEqualTo("01");
+        assertThat(jdbc.queryForObject("SELECT name FROM sys_clazz WHERE grade_id=2026", String.class)).isEqualTo("01班");
+    }
+
+    @Test
+    void examListCanBeFilteredByStageAndRejectsMismatchedGradeOrClass() {
+        jdbc.update("INSERT INTO sys_grade(id,code,name,stage,deleted) VALUES(1,'2026','2026','初中',0)");
+        jdbc.update("INSERT INTO sys_grade(id,code,name,stage,deleted) VALUES(2,'2026','2026','高中',0)");
+        jdbc.update("INSERT INTO sys_clazz(id,code,name,grade_id,clazz_type,deleted) VALUES(11,'01','01班',1,'1',0)");
+        jdbc.update("INSERT INTO sys_clazz(id,code,name,grade_id,clazz_type,deleted) VALUES(22,'01','01班',2,'1',0)");
+        jdbc.update("INSERT INTO sys_exam(id,name,code,year,semester,exam_type,status,deleted) VALUES(101,'初中考试','E101',2026,1,'考试',1,0)");
+        jdbc.update("INSERT INTO sys_exam(id,name,code,year,semester,exam_type,status,deleted) VALUES(202,'高中考试','E202',2026,1,'考试',1,0)");
+        jdbc.update("INSERT INTO sys_exam_body(exam_id,grade_clazz_id,g_or_c) VALUES(101,11,'C'),(202,22,'C')");
+
+        ExamPageQuery byStage = new ExamPageQuery();
+        byStage.setPageNum(1); byStage.setPageSize(10); byStage.setStage("初中");
+        assertThat(exams.getExamPage(byStage).getRecords()).extracting(row -> row.getId()).containsExactly(101L);
+
+        byStage.setGradeId(2L);
+        assertThat(exams.getExamPage(byStage).getRecords()).isEmpty();
+        byStage.setGradeId(null); byStage.setClazzId(22L);
+        assertThat(exams.getExamPage(byStage).getRecords()).isEmpty();
+    }
+
+    @Test
+    void standaloneScoreImportAcceptsMergedHeadersAndKeepsZeroAbsentAndBlankDistinct() throws Exception {
+        byte[] bytes = workbookBytes(true);
+        MockMultipartFile file = new MockMultipartFile("file", "fixture.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+        Map<String, Object> preview = localScoreAnalysis.preview("独立测试集", "初中", "初三", "6班", "一模", file).getData();
+        assertThat(preview.get("rowCount")).isEqualTo(2);
+        assertThat(preview.get("studentCodePresent")).isEqualTo(true);
+        assertThat(preview.get("subjects")).asList().containsExactlyInAnyOrder("数学", "语文");
+        assertThat(preview.get("confirmable")).isEqualTo(true);
+
+        localScoreAnalysis.confirm(Map.of("token", preview.get("token").toString()));
+        Long examId = jdbc.queryForObject("SELECT id FROM local_score_exam WHERE name='一模'", Long.class);
+        assertThat(jdbc.queryForObject("SELECT score FROM local_score_value WHERE exam_id=? AND subject='数学' AND status='NORMAL'", Double.class, examId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_value WHERE exam_id=? AND status='ABSENT'", Integer.class, examId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_value WHERE exam_id=? AND status='MISSING'", Integer.class, examId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_student", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_clazz", Integer.class)).isZero();
+    }
+
+    @Test
+    void standaloneScoreImportAllowsNoStudentCodeAndIgnoresRankColumns() throws Exception {
+        byte[] bytes = workbookBytes(false);
+        MockMultipartFile file = new MockMultipartFile("file", "fixture-no-code.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+        Map<String, Object> preview = localScoreAnalysis.preview("无学号测试集", "初中", "初三", "6班", "二模", file).getData();
+        assertThat(preview.get("studentCodePresent")).isEqualTo(false);
+        assertThat(preview.get("subjects")).asList().containsExactlyInAnyOrder("数学", "语文");
+        assertThat(preview.get("confirmable")).isEqualTo(true);
+        localScoreAnalysis.confirm(Map.of("token", preview.get("token").toString()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_student WHERE dataset_id=(SELECT id FROM local_score_dataset WHERE name='无学号测试集')", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_value WHERE subject IN ('班级','年级','总分')", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_student", Integer.class)).isZero();
+    }
+
+    @Test
+    void importsTheThreeProvidedJuniorScoreWorkbooksWhenLocalFixtureDirectoryIsConfigured() throws Exception {
+        String fixtureDirectory = System.getProperty("score.fixture.dir");
+        assumeTrue(fixtureDirectory != null && !fixtureDirectory.isBlank(), "local workbook fixtures were not configured");
+        String[] fileNames = {"2026.3市一模.xlsx", "2026.5市二模.xlsx", "2026.5校一模.xlsx"};
+        int[] expectedRows = {49, 48, 50};
+        for (int index = 0; index < fileNames.length; index++) {
+            Path path = Path.of(fixtureDirectory).resolve(fileNames[index]);
+            MockMultipartFile file = new MockMultipartFile("file", fileNames[index],
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Files.readAllBytes(path));
+            Map<String, Object> preview = localScoreAnalysis.preview("本机虚拟联调集", "初中", "初三", "测试班", "模拟考试" + (index + 1), file).getData();
+            assertThat(preview.get("rowCount")).isEqualTo(expectedRows[index]);
+            assertThat(preview.get("confirmable")).isEqualTo(true);
+            assertThat(preview.get("subjects")).asList().hasSize(7);
+            localScoreAnalysis.confirm(Map.of("token", preview.get("token").toString()));
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_exam", Integer.class)).isEqualTo(3);
+        // The three workbook rosters are not identical; by code/name their union contains 51 students.
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_student", Integer.class)).isEqualTo(51);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_score_value", Integer.class)).isEqualTo(49 * 7 + 48 * 7 + 50 * 7);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_student", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_clazz", Integer.class)).isZero();
+    }
+
+    @Test
+    void comprehensiveQualityUploadUsesWorkbookRosterAndMarksMissingTransferTermsAsNA() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "独立评价测试.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", qualityWorkbookBytes());
+        Map<String, Object> imported = standaloneQuality.importWorkbook(file).getData();
+        Long datasetId = ((Number) imported.get("datasetId")).longValue();
+        assertThat(imported.get("baselineStudentCount")).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_quality_student WHERE dataset_id=?", Integer.class, datasetId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_student", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_clazz", Integer.class)).isZero();
+
+        List<Map<String, Object>> reviews = standaloneQuality.missingReviews(datasetId).getData();
+        assertThat(reviews).anySatisfy(row -> {
+            assertThat(row.get("name")).isEqualTo("测试学生乙");
+            assertThat(row.get("semester")).isEqualTo("junior_1_1");
+            assertThat(row.get("status")).isEqualTo("PENDING");
+        });
+        standaloneQuality.updateMissingReview(datasetId, findLocalQualityStudentId(datasetId, "Q002"), "junior_1_1",
+                Map.of("status", "CONFIRMED_TRANSFER_IN"));
+        standaloneQuality.generateFinal(datasetId);
+        List<Map<String, Object>> finalRows = standaloneQuality.finalResults(datasetId).getData().get("rows") instanceof List<?> rows
+                ? (List<Map<String, Object>>) rows : List.of();
+        assertThat(finalRows).hasSize(10);
+        assertThat(finalRows).filteredOn(row -> "Q002".equals(row.get("code")))
+                .allSatisfy(row -> assertThat(row.get("finalLevel")).isEqualTo("N/A"));
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("scoredStudentCount")).isEqualTo(1);
+    }
+
+    @Test
+    void importsTheProvidedQualityWorkbookDirectlyWhenLocalFixturePathIsConfigured() throws Exception {
+        String fixturePath = System.getProperty("quality.fixture.path");
+        assumeTrue(fixturePath != null && !fixturePath.isBlank(), "local quality workbook fixture was not configured");
+        Path path = Path.of(fixturePath);
+        MockMultipartFile file = new MockMultipartFile("file", path.getFileName().toString(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Files.readAllBytes(path));
+        Map<String, Object> imported = standaloneQuality.importWorkbook(file).getData();
+        assertThat(imported.get("totalRows")).isEqualTo(258);
+        assertThat(imported.get("baselineStudentCount")).isEqualTo(44);
+        assertThat(((Map<?, ?>) imported.get("semesterSheets"))).hasSize(6);
+        Long datasetId = ((Number) imported.get("datasetId")).longValue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_quality_student WHERE dataset_id=?", Integer.class, datasetId)).isEqualTo(44);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_student", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_clazz", Integer.class)).isZero();
+    }
+
+    private static byte[] workbookBytes(boolean withCodes) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("成绩");
+            Row title = sheet.createRow(0);
+            title.createCell(0).setCellValue("成绩表");
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 5));
+            Row header = sheet.createRow(1);
+            int col = 0;
+            if (withCodes) header.createCell(col++).setCellValue("学号");
+            header.createCell(col++).setCellValue("姓名");
+            header.createCell(col++).setCellValue("总分");
+            header.createCell(col++).setCellValue("班级");
+            header.createCell(col++).setCellValue("年级");
+            int chineseCol = col++;
+            header.createCell(chineseCol).setCellValue("语文");
+            int mathCol = col;
+            header.createCell(mathCol).setCellValue("数学");
+            Row first = sheet.createRow(2);
+            col = 0;
+            if (withCodes) first.createCell(col++).setCellValue("001");
+            first.createCell(col++).setCellValue("测试甲");
+            first.createCell(col++).setCellValue(100);
+            first.createCell(col++).setCellValue(1);
+            first.createCell(col++).setCellValue(1);
+            first.createCell(col++).setCellValue(80);
+            first.createCell(col).setCellValue(0);
+            Row second = sheet.createRow(3);
+            col = 0;
+            if (withCodes) second.createCell(col++).setCellValue("002");
+            second.createCell(col++).setCellValue("测试乙");
+            second.createCell(col++).setCellValue(90);
+            second.createCell(col++).setCellValue(2);
+            second.createCell(col++).setCellValue(2);
+            col++;
+            second.createCell(col).setCellValue("缺考");
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static byte[] qualityWorkbookBytes() throws Exception {
+        String[] sheets = {"七上", "七下", "八上", "八下", "九上", "九下"};
+        String[] dimensions = {"思想品德", "学业水平", "身心健康", "艺术素养", "实践与创新"};
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            for (int semester = 0; semester < sheets.length; semester++) {
+                Sheet sheet = workbook.createSheet(sheets[semester]);
+                Row header = sheet.createRow(0);
+                header.createCell(0).setCellValue("学号"); header.createCell(1).setCellValue("姓名");
+                for (int i = 0; i < dimensions.length; i++) header.createCell(i + 2).setCellValue(dimensions[i]);
+                int rowIndex = 1;
+                for (int student = semester == 0 ? 0 : 0; student < 2; student++) {
+                    if (semester == 0 && student == 1) continue;
+                    Row row = sheet.createRow(rowIndex++);
+                    row.createCell(0).setCellValue(student == 0 ? "Q001" : "Q002");
+                    row.createCell(1).setCellValue(student == 0 ? "测试学生甲" : "测试学生乙");
+                    for (int i = 0; i < dimensions.length; i++) row.createCell(i + 2).setCellValue(student == 0 ? "A" : "B");
+                }
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private long findLocalQualityStudentId(long datasetId, String code) {
+        return jdbc.queryForObject("SELECT id FROM local_quality_student WHERE dataset_id=? AND source_code=?", Long.class, datasetId, code);
     }
 
     private StudentForm student(String code) {

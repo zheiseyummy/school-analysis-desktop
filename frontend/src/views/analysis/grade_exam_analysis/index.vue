@@ -260,13 +260,6 @@ const renderRightChart = () => {
             type-code="semester"
           />
         </el-form-item>
-        <el-form-item label="考试类型" prop="examType" style="width: 268px">
-          <dictionary
-            @change="conditionChange"
-            v-model="queryParams.examType"
-            type-code="examType"
-          />
-        </el-form-item>
 
         <el-form-item label="考试" prop="examId">
           <el-select
@@ -311,9 +304,6 @@ const renderRightChart = () => {
           </el-descriptions-item>
           <el-descriptions-item label="学期">{{
             exam.semesterStr
-          }}</el-descriptions-item>
-          <el-descriptions-item label="考试类型">{{
-            exam.examTypeStr
           }}</el-descriptions-item>
           <el-descriptions-item label="考试名称"
             >{{ exam.name }}

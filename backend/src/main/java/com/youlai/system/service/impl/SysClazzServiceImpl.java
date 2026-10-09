@@ -6,14 +6,17 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.youlai.system.common.model.Option;
+import com.youlai.system.common.enums.ClazzTypeEnum;
 import com.youlai.system.converter.ClazzConverter;
 import com.youlai.system.mapper.SysClazzMapper;
 import com.youlai.system.model.bo.GradeClazzBO;
 import com.youlai.system.model.entity.SysClazz;
+import com.youlai.system.model.entity.SysGrade;
 import com.youlai.system.model.form.ClazzForm;
 import com.youlai.system.model.query.ClazzPageQuery;
 import com.youlai.system.model.vo.ClazzPageVO;
 import com.youlai.system.service.SysClazzService;
+import com.youlai.system.service.SysGradeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +32,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysClazzServiceImpl extends ServiceImpl<SysClazzMapper, SysClazz> implements SysClazzService {
     private final ClazzConverter clazzConverter;
+    private final SysGradeService gradeService;
 
     @Override
     public Page<ClazzPageVO> getClazzPage(ClazzPageQuery queryParams) {
@@ -56,6 +60,12 @@ public class SysClazzServiceImpl extends ServiceImpl<SysClazzMapper, SysClazz> i
     @Override
     public boolean saveClazz(ClazzForm clazzForm) {
 
+        resolveGrade(clazzForm);
+
+        if (StrUtil.isBlank(clazzForm.getName())) clazzForm.setName(clazzForm.getCode() + "班");
+        if (StrUtil.isBlank(clazzForm.getClazzType())) clazzForm.setClazzType(String.valueOf(ClazzTypeEnum.MALE.getValue()));
+        if (clazzForm.getStatus() == null) clazzForm.setStatus(1);
+
         String code = clazzForm.getCode();
         long codeCount = this.count(new LambdaQueryWrapper<SysClazz>().eq(SysClazz::getGradeId, clazzForm.getGradeId()).eq(SysClazz::getCode, code));
         Assert.isTrue(codeCount == 0, "班级编号已存在");
@@ -70,6 +80,15 @@ public class SysClazzServiceImpl extends ServiceImpl<SysClazzMapper, SysClazz> i
 
     @Override
     public boolean updateClazz(Long clazzId, ClazzForm clazzForm) {
+
+        SysClazz existing = this.getById(clazzId);
+        if (existing != null && clazzForm.getGradeId() == null && StrUtil.isBlank(clazzForm.getGradeName())) {
+            clazzForm.setGradeId(existing.getGradeId());
+        }
+        resolveGrade(clazzForm);
+        if (existing != null && StrUtil.isBlank(clazzForm.getName())) clazzForm.setName(existing.getName());
+        if (existing != null && StrUtil.isBlank(clazzForm.getClazzType())) clazzForm.setClazzType(existing.getClazzType());
+        if (existing != null && clazzForm.getStatus() == null) clazzForm.setStatus(existing.getStatus());
 
         String code = clazzForm.getCode();
         long codeCount = this.count(new LambdaQueryWrapper<SysClazz>()
@@ -97,7 +116,23 @@ public class SysClazzServiceImpl extends ServiceImpl<SysClazzMapper, SysClazz> i
     @Override
     public ClazzForm getClazzForm(Long clazzId) {
         SysClazz entity = this.getById(clazzId);
-        return clazzConverter.entity2Form(entity);
+        ClazzForm form = clazzConverter.entity2Form(entity);
+        if (entity != null && entity.getGradeId() != null) {
+            SysGrade grade = gradeService.getById(entity.getGradeId());
+            if (grade != null) form.setGradeName(StrUtil.isNotBlank(grade.getCode()) ? grade.getCode() : grade.getName());
+        }
+        return form;
+    }
+
+    private void resolveGrade(ClazzForm form) {
+        if (StrUtil.isNotBlank(form.getGradeName())) {
+            String entered = form.getGradeName().trim();
+            SysGrade grade = gradeService.getByGradeCode(entered);
+            if (grade == null) grade = gradeService.getByGradeName(entered);
+            Assert.notNull(grade, "未找到“" + entered + "”对应的年级，请先在年级管理中创建该年份");
+            form.setGradeId(grade.getId());
+        }
+        Assert.notNull(form.getGradeId(), "请输入年级/年份");
     }
 
     @Override

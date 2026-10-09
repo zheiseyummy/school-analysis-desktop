@@ -55,14 +55,13 @@ const formData = reactive<ClazzForm>({
   status: 1,
   name: "",
   code: "",
+  clazzType: "1",
+  gradeName: "",
 });
 
 const rules = reactive({
-  name: [{ required: true, message: "请输入班级名称", trigger: "blur" }],
   code: [{ required: true, message: "请输入班级编号", trigger: "blur" }],
-  gradeId: [{ required: true, message: "请选择所属年级", trigger: "blur" }],
-  clazzType: [{ required: true, message: "请选择班级类型", trigger: "blur" }],
-  status: [{ required: true, message: "请选择状态", trigger: "blur" }],
+  gradeName: [{ required: true, message: "请输入年级/年份", trigger: "blur" }],
 });
 
 /** 查询 */
@@ -143,6 +142,8 @@ function resetForm() {
 
   formData.id = undefined;
   formData.code = "";
+  formData.gradeId = undefined;
+  formData.gradeName = "";
   formData.name = "";
   formData.sort = 1;
   formData.status = 1;
@@ -171,38 +172,6 @@ function handleDelete(clazzId?: number) {
   });
 }
 
-const arrangeDataDialog = reactive({
-  title: "",
-  visible: false,
-});
-
-const selectedClazz = reactive({
-  clazzId: -1,
-  clazzName: "",
-}); // 当前选中的班级
-
-/** 打开教学安排数据弹窗 */
-function openArrangeDialog(row: ClazzPageVO) {
-  arrangeDataDialog.visible = true;
-  arrangeDataDialog.title =
-    "【" +
-    row.gradeName +
-    "/" +
-    row.name +
-    "/" +
-    row.clazzTypeLabel +
-    "】教学安排数据";
-
-  selectedClazz.clazzId = row.id!;
-  selectedClazz.clazzName =
-    row.gradeName + "/" + row.name! + "/" + row.clazzTypeLabel;
-}
-
-/**  关闭教学安排数据弹窗 */
-function closeArrangeDialog() {
-  arrangeDataDialog.visible = false;
-}
-
 onMounted(() => {
   loadTeacherOptions();
   loadGradeOptions();
@@ -216,7 +185,7 @@ onMounted(() => {
         <el-form-item prop="keywords" label="关键字">
           <el-input
             v-model="queryParams.keywords"
-            placeholder="班级编号/名称"
+            placeholder="班级编号"
             clearable
             @keyup.enter="handleQuery"
           />
@@ -238,19 +207,9 @@ onMounted(() => {
           </el-select>
         </el-form-item>
 
-        <el-form-item label="班级主任" prop="managerId">
-          <el-select
-            v-model="queryParams.managerId"
-            clearable
-            class="!w-[200px]"
-            placeholder="全部"
-          >
-            <el-option
-              v-for="item in teacherList"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
+        <el-form-item label="班主任" prop="managerId">
+          <el-select v-model="queryParams.managerId" clearable class="!w-[200px]" placeholder="全部">
+            <el-option v-for="item in teacherList" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
 
@@ -288,12 +247,6 @@ onMounted(() => {
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column
-          label="班级类型"
-          prop="clazzTypeLabel"
-          width="100"
-          align="center"
-        />
-        <el-table-column
           label="年级"
           prop="gradeName"
           width="80"
@@ -306,61 +259,15 @@ onMounted(() => {
           align="center"
         />
         <el-table-column
-          label="班级名称"
-          prop="name"
-          width="150"
-          align="center"
-        />
-
-        <el-table-column
-          label="班级主任"
+          label="班主任"
           prop="managerName"
           width="120"
           align="center"
         />
-        <el-table-column
-          label="教学数量"
-          prop="arrangeCount"
-          width="100"
-          align="center"
-        >
-          <template #default="scope">
-            <el-tag type="primary" effect="dark" v-if="scope.row.arrangeCount">
-              {{ scope.row.arrangeCount }}</el-tag
-            >
-          </template>
-        </el-table-column>
-        <el-table-column label="教学列表" prop="arrangeNameList" />
-        <el-table-column
-          label="学生数量"
-          prop="studentCount"
-          width="100"
-          align="center"
-        >
-          <template #default="scope">
-            <el-tag type="success" effect="dark" v-if="scope.row.studentCount">
-              {{ scope.row.studentCount }}</el-tag
-            >
-          </template>
-        </el-table-column>
-        <el-table-column label="学生列表" prop="studentNameList" />
-        <el-table-column label="状态" align="center" width="80">
-          <template #default="scope">
-            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-            <el-tag v-else type="info">禁用</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="排序" align="center" prop="sort" width="80" />
 
         <el-table-column fixed="right" label="操作" width="220">
           <template #default="scope">
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click.stop="openArrangeDialog(scope.row)"
-              ><i-ep-Collection />教学安排</el-button
-            >
             <el-button
               type="primary"
               size="small"
@@ -403,27 +310,14 @@ onMounted(() => {
         :rules="rules"
         label-width="100px"
       >
-        <el-form-item label="所属年级" prop="gradeId">
-          <el-select v-model="formData.gradeId" placeholder="请选择所属年级">
-            <el-option
-              v-for="item in gradeList"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+        <el-form-item label="年级/年份" prop="gradeName">
+          <el-input v-model="formData.gradeName" placeholder="直接输入年份，例如 2026" />
         </el-form-item>
         <el-form-item label="班级编号" prop="code">
-          <el-input v-model="formData.code" placeholder="请输入班级编号" />
+          <el-input v-model="formData.code" placeholder="直接输入编号，例如 01、02" />
         </el-form-item>
-        <el-form-item label="班级名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入班级名称" />
-        </el-form-item>
-        <el-form-item label="班级类型" prop="clazzType">
-          <dictionary v-model="formData.clazzType" type-code="clazzType" />
-        </el-form-item>
-        <el-form-item label="班级主任" prop="managerId">
-          <el-select v-model="formData.managerId" placeholder="请选择班级主任">
+        <el-form-item label="班主任" prop="managerId">
+          <el-select v-model="formData.managerId" clearable placeholder="请选择班主任">
             <el-option
               v-for="item in teacherList"
               :key="item.value"
@@ -433,12 +327,6 @@ onMounted(() => {
           </el-select>
         </el-form-item>
 
-        <el-form-item label="状态" prop="status">
-          <el-radio-group v-model="formData.status">
-            <el-radio :label="1">正常</el-radio>
-            <el-radio :label="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
         <el-form-item label="排序" prop="sort">
           <el-input-number
             v-model="formData.sort"
@@ -457,17 +345,5 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!--教学安排数据弹窗-->
-    <el-dialog
-      v-model="arrangeDataDialog.visible"
-      :title="arrangeDataDialog.title"
-      width="1000px"
-      @close="closeArrangeDialog"
-    >
-      <arrange-item
-        v-model:clazzId="selectedClazz.clazzId"
-        v-model:clazzName="selectedClazz.clazzName"
-      />
-    </el-dialog>
   </div>
 </template>

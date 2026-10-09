@@ -3,8 +3,6 @@
   <div class="navbar-container">
     <!-- 导航栏左侧 -->
     <NavbarLeft />
-    <!-- 导航栏右侧 -->
-    <NavbarRight />
   </div>
 </template>
 

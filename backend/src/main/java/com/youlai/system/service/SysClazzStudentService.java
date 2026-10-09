@@ -66,6 +66,8 @@ public interface SysClazzStudentService extends IService<SysClazzStudent> {
      */
     List<Long> getStudentIdListBy(Long clazzId, Integer year);
 
+    List<Long> getStudentIdListByClazzIdList(List<Long> clazzIdList, Integer year);
+
     /**
      * 获取学生的就读过的班级情况列表
      *

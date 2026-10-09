@@ -30,9 +30,14 @@ import { getComplexClazzOptions } from "@/api/clazz";
 
 import type { UploadInstance } from "element-plus";
 import { genFileId } from "element-plus";
+import { getGradeOptions } from "@/api/grade";
+import { getClazzPage } from "@/api/clazz";
+import type { ClazzPageVO } from "@/api/clazz/types";
 const uploadRef = ref<UploadInstance>(); // 上传组件
 
 const complexClazzList = ref<OptionType[]>(); //携带年级的班级下拉数据源
+const gradeOptions = ref<OptionType[]>([]);
+const filterClazzOptions = ref<ClazzPageVO[]>([]);
 
 const queryFormRef = ref(ElForm);
 const studentFormRef = ref(ElForm);
@@ -59,6 +64,7 @@ const dialog = reactive({
 const formData = reactive<StudentForm>({
   sort: 1,
   status: 1,
+  sex: 1,
   code: "",
   name: "",
   clazzList: [],
@@ -67,8 +73,6 @@ const formData = reactive<StudentForm>({
 const rules = reactive({
   name: [{ required: true, message: "请输入学生名称", trigger: "blur" }],
   code: [{ required: true, message: "请输入学生学号", trigger: "blur" }],
-  status: [{ required: true, message: "请选择状态", trigger: "blur" }],
-  sex: [{ required: true, message: "请选择性别", trigger: "blur" }],
   year: [{ required: true, message: "请选择入学年份", trigger: "blur" }],
   phone: [
     {
@@ -84,6 +88,20 @@ async function loadComplexClazzOptions() {
   getComplexClazzOptions().then((response) => {
     complexClazzList.value = response.data;
   });
+}
+
+async function loadFilterClazzOptions(gradeId?: number) {
+  if (!gradeId) {
+    filterClazzOptions.value = [];
+    return;
+  }
+  const { data } = await getClazzPage({ pageNum: 1, pageSize: 1000, gradeId });
+  filterClazzOptions.value = data.list || [];
+}
+
+function handleGradeFilterChange() {
+  queryParams.clazzId = undefined;
+  loadFilterClazzOptions(queryParams.gradeId);
 }
 
 /** 查询 */
@@ -104,6 +122,8 @@ function resetQuery() {
   queryFormRef.value.resetFields();
   queryParams.pageNum = 1;
   queryParams.clazzId = undefined;
+  queryParams.gradeId = undefined;
+  filterClazzOptions.value = [];
   handleQuery();
 }
 
@@ -398,6 +418,7 @@ function handleExport() {
 
 onMounted(() => {
   loadComplexClazzOptions();
+  getGradeOptions().then(({ data }) => (gradeOptions.value = data || []));
   handleQuery();
 });
 </script>
@@ -408,7 +429,7 @@ onMounted(() => {
         <el-form-item prop="keywords" label="关键字">
           <el-input
             v-model="queryParams.keywords"
-            placeholder="学号/姓名/手机号"
+            placeholder="学号/姓名"
             clearable
             @keyup.enter="handleQuery"
           />
@@ -423,25 +444,14 @@ onMounted(() => {
             placeholder="请选择入学年份"
           />
         </el-form-item>
-        <el-form-item label="班级">
-          <el-select
-            v-model="queryParams.clazzId"
-            clearable
-            class="!w-[200px]"
-            placeholder="全部"
-          >
-            <el-option-group
-              v-for="group in complexClazzList"
-              :key="group.label"
-              :label="group.label"
-            >
-              <el-option
-                v-for="child in group.children"
-                :key="child.value"
-                :label="child.label"
-                :value="child.value"
-              />
-            </el-option-group>
+        <el-form-item label="年级" prop="gradeId">
+          <el-select v-model="queryParams.gradeId" clearable class="!w-[160px]" placeholder="全部年级" @change="handleGradeFilterChange">
+            <el-option v-for="item in gradeOptions" :key="item.value" :label="item.label" :value="Number(item.value)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级" prop="clazzId">
+          <el-select v-model="queryParams.clazzId" clearable class="!w-[160px]" placeholder="全年级" :disabled="!queryParams.gradeId">
+            <el-option v-for="item in filterClazzOptions" :key="item.id" :label="item.code || item.name" :value="Number(item.id)" />
           </el-select>
         </el-form-item>
 
@@ -500,23 +510,11 @@ onMounted(() => {
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column
           align="center"
-          label="学生学号"
+          label="学号"
           prop="code"
           width="120"
         />
-        <el-table-column label="学生姓名" prop="name" width="150" />
-        <el-table-column
-          label="性别"
-          align="center"
-          prop="sexLabel"
-          width="60"
-        />
-        <el-table-column
-          label="出生日期"
-          align="center"
-          prop="birthDay"
-          width="100"
-        />
+        <el-table-column label="姓名" prop="name" width="150" />
         <!-- <el-table-column label="电话" prop="phone" /> -->
         <el-table-column
           label="入学年份"
@@ -524,20 +522,9 @@ onMounted(() => {
           align="center"
           width="90"
         />
-        <el-table-column align="center" label="班级列表" width="180">
-          <template #default="scope">
-            <span v-html="scope.row.clazzNameList"></span>
-          </template>
-        </el-table-column>
         <el-table-column label="备注" prop="remark" />
         <!-- <el-table-column label="创建时间" prop="createTime" /> -->
         <!-- <el-table-column label="班级数量" prop="clazzCount" width="90" /> -->
-        <el-table-column label="状态" align="center" width="100">
-          <template #default="scope">
-            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-            <el-tag v-else type="info">禁用</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column fixed="right" label="操作" width="230">
           <template #default="scope">
             <el-button
@@ -592,40 +579,20 @@ onMounted(() => {
       >
         <el-row>
           <el-col :span="12">
-            <el-form-item label="学生学号" prop="code">
-              <el-input v-model="formData.code" placeholder="请输入学生学号" />
+            <el-form-item label="学号" prop="code">
+              <el-input v-model="formData.code" placeholder="请输入学号" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="学生姓名" prop="name">
-              <el-input v-model="formData.name" placeholder="请输入学生姓名" />
+            <el-form-item label="姓名" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入姓名" />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="性别" prop="sex">
-              <dictionary v-model="formData.sex" type-code="gender" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="状态" prop="status">
-              <el-radio-group v-model="formData.status">
-                <el-radio :value="1" label="正常" />
-                <el-radio :value="0" label="停用" />
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="电话" prop="phone">
-              <el-input v-model="formData.phone" placeholder="请输入电话" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-form-item label="电话" prop="phone">
+          <el-input v-model="formData.phone" placeholder="请输入电话" />
+        </el-form-item>
 
         <el-row>
           <el-col :span="12">
@@ -636,17 +603,6 @@ onMounted(() => {
                 format="YYYY"
                 value-format="YYYY"
                 placeholder="请选择入学年份"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="出生日期" prop="birthDay">
-              <el-date-picker
-                v-model="formData.birthDay"
-                type="date"
-                placeholder="请选择出生日期"
-                size="default"
-                value-format="YYYY-MM-DD"
               />
             </el-form-item>
           </el-col>
@@ -732,7 +688,6 @@ onMounted(() => {
           <el-upload
             ref="uploadRef"
             action=""
-            drag
             accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             :limit="1"
             :auto-upload="false"
@@ -740,13 +695,7 @@ onMounted(() => {
             :on-change="handleFileChange"
             :on-exceed="handleFileExceed"
           >
-            <el-icon class="el-icon--upload">
-              <i-ep-upload-filled />
-            </el-icon>
-            <div class="el-upload__text">
-              将文件拖到此处，或
-              <em>点击上传</em>
-            </div>
+            <el-button type="primary"><i-ep-upload />选择 Excel 文件</el-button>
             <template #tip>
               <div>xls/xlsx files</div>
             </template>

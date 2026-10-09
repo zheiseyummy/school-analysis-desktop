@@ -4,7 +4,6 @@
     <div class="flex w-full" v-if="layout == 'mix'">
       <SidebarLogo v-if="sidebarLogo" :collapse="!appStore.sidebar.opened" />
       <SidebarMixTopMenu class="flex-1" />
-      <NavbarRight />
     </div>
     <!--左侧布局 || 顶部布局 -->
     <template v-else>
@@ -12,7 +11,6 @@
       <el-scrollbar>
         <SidebarMenu :menu-list="permissionStore.routes" base-path="" />
       </el-scrollbar>
-      <NavbarRight v-if="layout === 'top'" />
     </template>
   </div>
 </template>

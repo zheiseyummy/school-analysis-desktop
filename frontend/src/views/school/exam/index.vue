@@ -19,6 +19,10 @@ import {
 import { ExamQuery, ExamPageVO, ExamForm, ExamCourseConfig } from "@/api/exam/types";
 import { getScoreRules } from "@/api/score-rule";
 import { ScoreRule } from "@/api/score-rule/types";
+import { getGradePage } from "@/api/grade";
+import type { GradePageVO } from "@/api/grade/types";
+import { getClazzPage } from "@/api/clazz";
+import type { ClazzPageVO } from "@/api/clazz/types";
 
 const queryFormRef = ref(ElForm);
 const examFormRef = ref(ElForm);
@@ -49,13 +53,39 @@ const formData = reactive<ExamForm>({
 
 const rules = reactive({
   name: [{ required: true, message: "请输入考试名称", trigger: "blur" }],
-  code: [{ required: true, message: "请输入考试编码", trigger: "blur" }],
-  status: [{ required: true, message: "请选择状态", trigger: "blur" }],
   year: [{ required: true, message: "请选择年度", trigger: "blur" }],
-  examType: [{ required: true, message: "请选择考试类型", trigger: "blur" }],
   examDate: [{ required: true, message: "请选择考试日期", trigger: "blur" }],
   semester: [{ required: true, message: "请选择学期", trigger: "blur" }],
 });
+
+const gradeOptions = ref<GradePageVO[]>([]);
+const clazzOptions = ref<ClazzPageVO[]>([]);
+const visibleGradeOptions = computed(() => gradeOptions.value.filter((item) => !queryParams.stage || item.stage === queryParams.stage));
+const stageGradeIds = computed(() => visibleGradeOptions.value.map((item) => Number(item.id)));
+const visibleClazzOptions = computed(() => clazzOptions.value.filter((item) =>
+  (!queryParams.gradeId || item.gradeId === queryParams.gradeId) &&
+  (!queryParams.stage || stageGradeIds.value.includes(Number(item.gradeId)))
+));
+
+async function loadFilterOptions(gradeId?: number) {
+  const [grades, clazzes] = await Promise.all([
+    getGradePage({ pageNum: 1, pageSize: 1000 }),
+    getClazzPage({ pageNum: 1, pageSize: 1000, gradeId }),
+  ]);
+  gradeOptions.value = grades.data?.list || [];
+  clazzOptions.value = clazzes.data?.list || [];
+}
+
+function handleStageFilterChange() {
+  queryParams.gradeId = undefined;
+  queryParams.clazzId = undefined;
+  loadFilterOptions();
+}
+
+function handleGradeFilterChange() {
+  queryParams.clazzId = undefined;
+  loadFilterOptions(queryParams.gradeId);
+}
 
 /** 查询 */
 function handleQuery() {
@@ -73,6 +103,10 @@ function handleQuery() {
 /** 重置查询 */
 function resetQuery() {
   queryFormRef.value.resetFields();
+  queryParams.stage = undefined;
+  queryParams.gradeId = undefined;
+  queryParams.clazzId = undefined;
+  loadFilterOptions();
   queryParams.pageNum = 1;
   handleQuery();
 }
@@ -93,6 +127,8 @@ function openDialog(examId?: number) {
   } else {
     dialog.title = "新增考试";
     formData.examType = "考试";
+    formData.code = "";
+    formData.status = 1;
   }
 }
 
@@ -262,6 +298,7 @@ function handleExamCourseSubmit() {
 }
 onMounted(() => {
   handleQuery();
+  loadFilterOptions();
   getScoreRules().then(({ data }) => (scoreRules.value = data || []));
 });
 </script>
@@ -272,7 +309,7 @@ onMounted(() => {
         <el-form-item prop="keywords" label="关键字">
           <el-input
             v-model="queryParams.keywords"
-            placeholder="考试编码/名称"
+            placeholder="考试名称"
             clearable
             @keyup.enter="handleQuery"
           />
@@ -290,8 +327,21 @@ onMounted(() => {
         <el-form-item label="学期" prop="semester" style="width: 268px">
           <dictionary v-model="queryParams.semester" type-code="semester" />
         </el-form-item>
-        <el-form-item label="考试类型" prop="examType" style="width: 268px">
-          <dictionary v-model="queryParams.examType" type-code="examType" />
+        <el-form-item label="学段" prop="stage">
+          <el-select v-model="queryParams.stage" clearable placeholder="全部学段" class="!w-[140px]" @change="handleStageFilterChange">
+            <el-option label="初中" value="初中" />
+            <el-option label="高中" value="高中" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="年级" prop="gradeId">
+          <el-select v-model="queryParams.gradeId" clearable placeholder="全部年级" class="!w-[160px]" @change="handleGradeFilterChange">
+            <el-option v-for="item in visibleGradeOptions" :key="item.id" :label="item.name || item.code" :value="Number(item.id)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级" prop="clazzId">
+          <el-select v-model="queryParams.clazzId" clearable placeholder="全部班级" class="!w-[160px]" :disabled="!queryParams.gradeId">
+            <el-option v-for="item in visibleClazzOptions" :key="item.id" :label="item.code || item.name" :value="Number(item.id)" />
+          </el-select>
         </el-form-item>
 
         <el-form-item>
@@ -335,31 +385,9 @@ onMounted(() => {
           width="120"
           align="center"
         />
-        <el-table-column
-          label="考试类型"
-          prop="examTypeStr"
-          width="120"
-          align="center"
-        />
-        <el-table-column label="考试编码" prop="code" width="150" />
         <el-table-column label="考试名称" prop="name" />
-
-        <el-table-column label="考试对象" width="150" align="center">
-          <template #default="scope">
-            <el-tooltip
-              v-if="scope.row.gradeClazzCount"
-              class="box-item"
-              effect="customized"
-              :content="scope.row.gradeClazzList"
-              raw-content
-              placement="top"
-            >
-              <el-tag effect="light">{{ scope.row.gradeClazzCount }}</el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
         <el-table-column
-          label="样本数"
+          label="考试人数"
           align="center"
           width="80"
           prop="sampleCount"
@@ -377,12 +405,6 @@ onMounted(() => {
           width="180"
           align="center"
         />
-        <el-table-column label="状态" align="center" width="100">
-          <template #default="scope">
-            <el-tag v-if="scope.row.status === 1" type="success">正常</el-tag>
-            <el-tag v-else type="info">禁用</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="排序" align="center" width="80" prop="sort" />
 
         <el-table-column fixed="right" label="操作" width="250">
@@ -456,13 +478,6 @@ onMounted(() => {
           <el-input v-model="formData.name" placeholder="请输入考试名称" />
         </el-form-item>
 
-        <el-form-item label="考试编码" prop="code">
-          <el-input v-model="formData.code" placeholder="请输入考试编码" />
-        </el-form-item>
-
-        <el-form-item label="考试类型" prop="examType">
-          <el-input v-model="formData.examType" readonly />
-        </el-form-item>
         <el-form-item label="考试日期" prop="examDate">
           <el-date-picker
             v-model="formData.examDate"
@@ -471,12 +486,6 @@ onMounted(() => {
             value-format="YYYY-MM-DD hh:mm:ss"
             placeholder="请选择考试日期"
           />
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-radio-group v-model="formData.status">
-            <el-radio :value="1">正常</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
         </el-form-item>
         <el-form-item label="排序" prop="sort">
           <el-input-number

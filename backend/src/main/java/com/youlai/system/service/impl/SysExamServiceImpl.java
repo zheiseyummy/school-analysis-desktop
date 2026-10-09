@@ -10,6 +10,8 @@ import com.youlai.system.common.model.Option;
 import com.youlai.system.converter.ExamConverter;
 import com.youlai.system.mapper.SysExamMapper;
 import com.youlai.system.model.entity.SysExam;
+import com.youlai.system.model.entity.SysGrade;
+import com.youlai.system.model.entity.SysClazz;
 import com.youlai.system.model.entity.SysExamBody;
 import com.youlai.system.model.form.ExamForm;
 import com.youlai.system.model.query.ClazzExamAnalysisQuery;
@@ -18,6 +20,7 @@ import com.youlai.system.model.vo.ExamPageVO;
 import com.youlai.system.service.SysExamService;
 import com.youlai.system.service.SysClazzService;
 import com.youlai.system.service.SysExamBodyService;
+import com.youlai.system.service.SysGradeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,6 +38,7 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
     private final ExamConverter examConverter;
     private final SysClazzService clazzService;
     private final SysExamBodyService examBodyService;
+    private final SysGradeService gradeService;
 
 
     @Override
@@ -45,11 +50,38 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
         Integer year =queryParams.getYear();
         String examType = queryParams.getExamType();
         Integer semester = queryParams.getSemester();
+        String stage = queryParams.getStage();
+        Long gradeId = queryParams.getGradeId();
+        Long clazzId = queryParams.getClazzId();
 
         LambdaQueryWrapper<SysExam> queryWrapper = new LambdaQueryWrapper<SysExam>();
         queryWrapper.eq(year != null, SysExam::getYear, year);
         queryWrapper.eq(semester != null, SysExam::getSemester, semester);
         queryWrapper.eq(examType != null, SysExam::getExamType, examType);
+        List<Long> gradeIds = StrUtil.isNotBlank(stage)
+                ? gradeService.list(new LambdaQueryWrapper<SysGrade>().eq(SysGrade::getStage, stage))
+                    .stream().map(SysGrade::getId).toList()
+                : null;
+        if (gradeId != null) {
+            if (gradeIds != null && !gradeIds.contains(gradeId)) return new Page<>(pageNum, pageSize);
+            gradeIds = List.of(gradeId);
+        }
+        List<Long> clazzIds = null;
+        if (clazzId != null) {
+            SysClazz selectedClazz = clazzService.getById(clazzId);
+            if (selectedClazz == null || (gradeIds != null && !gradeIds.contains(selectedClazz.getGradeId()))) {
+                return new Page<>(pageNum, pageSize);
+            }
+            clazzIds = List.of(clazzId);
+        } else if (gradeIds != null) {
+            clazzIds = gradeIds.stream().flatMap(id -> clazzService.clazzIdListByGradeId(id).stream()).distinct().toList();
+        }
+        if (clazzIds != null) {
+            if (CollectionUtil.isEmpty(clazzIds)) return new Page<>(pageNum, pageSize);
+            List<Long> examIds = examBodyService.getExamIdListByClazzIdList(clazzIds);
+            if (CollectionUtil.isEmpty(examIds)) return new Page<>(pageNum, pageSize);
+            queryWrapper.in(SysExam::getId, examIds.stream().distinct().toList());
+        }
         queryWrapper.and(StrUtil.isNotBlank(keywords),
                 wrapper ->
                         wrapper.like(StrUtil.isNotBlank(keywords), SysExam::getName, keywords)
@@ -68,7 +100,10 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
         long nameCount = this.count(new LambdaQueryWrapper<SysExam>().eq(SysExam::getName, name));
         Assert.isTrue(nameCount == 0, "考试名称已存在");
 
-        String code = examForm.getCode();
+        String code = StrUtil.blankToDefault(examForm.getCode(), "EXAM-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase());
+        examForm.setCode(code);
+        if (StrUtil.isBlank(examForm.getExamType())) examForm.setExamType("考试");
+        if (examForm.getStatus() == null) examForm.setStatus(1);
         long codeCount = this.count(new LambdaQueryWrapper<SysExam>().eq(SysExam::getCode, code));
         Assert.isTrue(codeCount == 0, "考试编号已存在");
 
@@ -96,6 +131,10 @@ public class SysExamServiceImpl extends ServiceImpl<SysExamMapper, SysExam> impl
         );
         Assert.isTrue(nameCount == 0, "考试名称已存在");
 
+        SysExam existing = this.getById(examId);
+        if (existing != null && StrUtil.isBlank(examForm.getCode())) examForm.setCode(existing.getCode());
+        if (existing != null && examForm.getStatus() == null) examForm.setStatus(existing.getStatus());
+        if (StrUtil.isBlank(examForm.getExamType())) examForm.setExamType("考试");
         String code = examForm.getCode();
         long codeCount = this.count(new LambdaQueryWrapper<SysExam>()
                 .eq(SysExam::getCode, code)

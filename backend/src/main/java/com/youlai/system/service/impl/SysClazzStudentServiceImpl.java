@@ -86,6 +86,16 @@ public class SysClazzStudentServiceImpl extends ServiceImpl<SysClazzStudentMappe
     }
 
     @Override
+    public List<Long> getStudentIdListByClazzIdList(List<Long> clazzIdList, Integer year) {
+        if (clazzIdList == null || clazzIdList.isEmpty()) return List.of();
+        LambdaQueryWrapper<SysClazzStudent> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.in(SysClazzStudent::getClazzId, clazzIdList);
+        queryWrapper.eq(year != null, SysClazzStudent::getYear, year);
+        queryWrapper.select(SysClazzStudent::getStudentId);
+        return list(queryWrapper).stream().map(SysClazzStudent::getStudentId).distinct().collect(Collectors.toList());
+    }
+
+    @Override
     public List<StudentClazzBO> getStudentClazzCountNameList(List<Long> studentIdList) {
         return this.baseMapper.getStudentClazzCountNameList(studentIdList);
     }

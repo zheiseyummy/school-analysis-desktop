@@ -425,7 +425,7 @@ const handleImportConfirm = useThrottleFn(() => {
         <el-form-item prop="keywords" label="关键字">
           <el-input
             v-model="queryParams.keywords"
-            placeholder="考试编码/名称"
+            placeholder="考试名称"
             clearable
             @keyup.enter="handleQuery"
           />
@@ -442,9 +442,6 @@ const handleImportConfirm = useThrottleFn(() => {
         </el-form-item>
         <el-form-item label="学期" prop="semester" style="width: 268px">
           <dictionary v-model="queryParams.semester" type-code="semester" />
-        </el-form-item>
-        <el-form-item label="考试类型" prop="examType" style="width: 268px">
-          <dictionary v-model="queryParams.examType" type-code="examType" />
         </el-form-item>
 
         <el-form-item label="年级" prop="gradeId">
@@ -531,12 +528,6 @@ const handleImportConfirm = useThrottleFn(() => {
         <el-table-column
           label="学期"
           prop="semesterStr"
-          width="120"
-          align="center"
-        />
-        <el-table-column
-          label="考试类型"
-          prop="examTypeStr"
           width="120"
           align="center"
         />
@@ -654,9 +645,6 @@ const handleImportConfirm = useThrottleFn(() => {
                 {{ dialog.teacherName }}
               </el-descriptions-item>
 
-              <el-descriptions-item label="考试类型">{{
-                scoreEntryInfo.examTypeStr
-              }}</el-descriptions-item>
               <el-descriptions-item label="考试名称">
                 {{ scoreEntryInfo.examName }}
               </el-descriptions-item>
@@ -763,7 +751,6 @@ const handleImportConfirm = useThrottleFn(() => {
           <el-upload
             ref="uploadRef"
             action=""
-            drag
             accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             :limit="1"
             :auto-upload="false"
@@ -771,13 +758,7 @@ const handleImportConfirm = useThrottleFn(() => {
             :on-change="handleFileChange"
             :on-exceed="handleFileExceed"
           >
-            <el-icon class="el-icon--upload">
-              <i-ep-upload-filled />
-            </el-icon>
-            <div class="el-upload__text">
-              将文件拖到此处，或
-              <em>点击上传</em>
-            </div>
+            <el-button type="primary"><i-ep-upload />选择 Excel 文件</el-button>
             <template #tip>
               <div>xls/xlsx files</div>
             </template>

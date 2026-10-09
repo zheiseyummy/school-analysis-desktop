@@ -4,6 +4,7 @@
 export interface StudentQuery extends PageQuery {
   keywords?: string;
   clazzId?: number;
+  gradeId?: number;
   year?: number;
 }
 

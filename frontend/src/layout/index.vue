@@ -27,7 +27,6 @@
           <TagsView v-if="showTagsView" />
         </div>
         <AppMain />
-        <Settings v-if="defaultSettings.showSettings" />
       </div>
     </div>
 
@@ -38,14 +37,12 @@
         <TagsView v-if="showTagsView" />
       </div>
       <AppMain />
-      <Settings v-if="defaultSettings.showSettings" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useAppStore, useSettingsStore, usePermissionStore } from "@/store";
-import defaultSettings from "@/settings";
 
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();

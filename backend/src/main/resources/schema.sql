@@ -116,6 +116,70 @@ CREATE TABLE IF NOT EXISTS sys_score_import_log (
   before_json TEXT, after_json TEXT, undone INTEGER DEFAULT 0,
   create_time TEXT, update_time TEXT
 );
+
+-- Standalone exam-analysis datasets never reference or mutate the base student/class tables.
+CREATE TABLE IF NOT EXISTS local_score_dataset (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+  stage TEXT, grade_name TEXT, class_name TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_score_exam (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL,
+  name TEXT NOT NULL, source_file TEXT, imported_at TEXT NOT NULL,
+  UNIQUE(dataset_id, name)
+);
+CREATE TABLE IF NOT EXISTS local_score_student (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL,
+  student_code TEXT, name TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_local_score_student_code
+  ON local_score_student(dataset_id, student_code) WHERE student_code IS NOT NULL AND student_code <> '';
+CREATE TABLE IF NOT EXISTS local_score_value (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, exam_id INTEGER NOT NULL,
+  student_id INTEGER NOT NULL, subject TEXT NOT NULL, score REAL,
+  status TEXT NOT NULL DEFAULT 'NORMAL',
+  UNIQUE(exam_id, student_id, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_local_score_exam_dataset ON local_score_exam(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_local_score_value_exam ON local_score_value(exam_id, subject);
+-- Comprehensive-quality workbooks are also an isolated roster and never require base student records.
+CREATE TABLE IF NOT EXISTS local_quality_dataset (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, source_file TEXT,
+  created_at TEXT NOT NULL, is_locked INTEGER DEFAULT 0, generated_at TEXT, locked_at TEXT,
+  a_ratio REAL DEFAULT 0.60, b_ratio REAL DEFAULT 0.35, c_ratio REAL DEFAULT 0.05
+);
+CREATE TABLE IF NOT EXISTS local_quality_student (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, source_code TEXT,
+  name TEXT NOT NULL, UNIQUE(dataset_id, source_code)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_local_quality_student_code
+  ON local_quality_student(dataset_id, source_code) WHERE source_code IS NOT NULL AND source_code <> '';
+CREATE TABLE IF NOT EXISTS local_quality_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  semester TEXT NOT NULL, dimension TEXT NOT NULL, level_or_score TEXT NOT NULL,
+  UNIQUE(dataset_id, student_id, semester, dimension)
+);
+CREATE TABLE IF NOT EXISTS local_quality_roster_entry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  semester TEXT NOT NULL, UNIQUE(dataset_id, student_id, semester)
+);
+CREATE TABLE IF NOT EXISTS local_quality_final_scope (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  source_sheet TEXT NOT NULL DEFAULT 'junior_3_2', UNIQUE(dataset_id, student_id)
+);
+CREATE TABLE IF NOT EXISTS local_quality_missing_review (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  semester TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', missing_dimensions TEXT,
+  remark TEXT, updated_at TEXT, UNIQUE(dataset_id, student_id, semester)
+);
+CREATE TABLE IF NOT EXISTS local_quality_final_result (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  dimension TEXT NOT NULL, cumulative_score REAL NOT NULL, class_rank INTEGER NOT NULL,
+  automatic_level TEXT NOT NULL, final_level TEXT NOT NULL, is_manually_adjusted INTEGER DEFAULT 0,
+  available_terms INTEGER DEFAULT 0, contains_na INTEGER DEFAULT 0,
+  UNIQUE(dataset_id, student_id, dimension)
+);
+CREATE INDEX IF NOT EXISTS idx_local_quality_record_student ON local_quality_record(dataset_id, student_id, semester);
+CREATE INDEX IF NOT EXISTS idx_local_quality_scope ON local_quality_final_scope(dataset_id, student_id);
 CREATE TABLE IF NOT EXISTS sys_arrange (
   id INTEGER PRIMARY KEY AUTOINCREMENT, clazz_id INTEGER, course_id INTEGER,
   teacher_id INTEGER, sort INTEGER DEFAULT 0, status INTEGER DEFAULT 1, remark TEXT
@@ -138,6 +202,17 @@ CREATE TABLE IF NOT EXISTS sys_dict (
   id INTEGER PRIMARY KEY AUTOINCREMENT, type_code TEXT NOT NULL, name TEXT NOT NULL,
   value TEXT, sort INTEGER DEFAULT 0, status INTEGER DEFAULT 1, defaulted INTEGER DEFAULT 0,
   remark TEXT, create_time TEXT, update_time TEXT, deleted INTEGER DEFAULT 0
+);
+
+INSERT OR IGNORE INTO sys_dict_type(name, code, status, remark)
+VALUES ('学期', 'semester', 1, '系统内置学期选项');
+INSERT INTO sys_dict(type_code, name, value, sort, status, defaulted, remark)
+SELECT 'semester', '上学期', '1', 1, 1, 0, '系统内置' WHERE NOT EXISTS (
+  SELECT 1 FROM sys_dict WHERE type_code = 'semester' AND value = '1' AND deleted = 0
+);
+INSERT INTO sys_dict(type_code, name, value, sort, status, defaulted, remark)
+SELECT 'semester', '下学期', '2', 2, 1, 0, '系统内置' WHERE NOT EXISTS (
+  SELECT 1 FROM sys_dict WHERE type_code = 'semester' AND value = '2' AND deleted = 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_score_exam_student ON sys_score(exam_id, student_id);

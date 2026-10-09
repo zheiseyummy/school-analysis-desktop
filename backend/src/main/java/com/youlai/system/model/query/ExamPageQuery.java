@@ -25,4 +25,13 @@ public class ExamPageQuery extends BasePageQuery {
 
     @Schema(description = "学期")
     private Integer semester;
+
+    @Schema(description = "学段：初中/高中")
+    private String stage;
+
+    @Schema(description = "年级ID")
+    private Long gradeId;
+
+    @Schema(description = "班级ID")
+    private Long clazzId;
 }

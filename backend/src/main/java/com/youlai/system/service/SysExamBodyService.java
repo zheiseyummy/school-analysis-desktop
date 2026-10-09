@@ -60,6 +60,8 @@ public interface SysExamBodyService extends IService<SysExamBody> {
      */
     List<Long> getExamIdListByClazzIdList(List<Long> clazzIdList);
 
+    List<Long> getExamIdListByGradeId(Long gradeId);
+
     /**
      * 删除班级的考试信息
      *

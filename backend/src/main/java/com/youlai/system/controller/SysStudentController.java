@@ -76,6 +76,9 @@ public class SysStudentController {
         if (queryParams.getClazzId() != null) {
             List<Long> studentIdList = clazzStudentService.getStudentIdListBy(queryParams.getClazzId(), DateUtil.thisYear());
             queryParams.setStudentIdList(studentIdList);
+        } else if (queryParams.getGradeId() != null) {
+            List<Long> clazzIds = clazzService.clazzIdListByGradeId(queryParams.getGradeId());
+            queryParams.setStudentIdList(clazzStudentService.getStudentIdListByClazzIdList(clazzIds, DateUtil.thisYear()));
         }
 
         IPage<StudentPageVO> result = studentService.getStudentPage(queryParams);
@@ -201,6 +204,9 @@ public class SysStudentController {
         if (queryParams.getClazzId() != null) {
             List<Long> studentIdList = clazzStudentService.getStudentIdListBy(queryParams.getClazzId(), DateUtil.thisYear());
             queryParams.setStudentIdList(studentIdList);
+        } else if (queryParams.getGradeId() != null) {
+            List<Long> clazzIds = clazzService.clazzIdListByGradeId(queryParams.getGradeId());
+            queryParams.setStudentIdList(clazzStudentService.getStudentIdListByClazzIdList(clazzIds, DateUtil.thisYear()));
         }
         List<SysStudent> studentList = studentService.getStudentExport(queryParams);
         List<StudentExportVO> studentExportVOList = new ArrayList<>();

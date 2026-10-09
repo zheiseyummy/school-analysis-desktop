@@ -6,6 +6,9 @@ export interface ExamQuery extends PageQuery {
   year?: string;
   examType?: string;
   semester?: number;
+  stage?: string;
+  gradeId?: number;
+  clazzId?: number;
 }
 
 /**

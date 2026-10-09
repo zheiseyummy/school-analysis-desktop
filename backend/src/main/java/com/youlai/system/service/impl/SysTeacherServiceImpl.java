@@ -130,6 +130,12 @@ public class SysTeacherServiceImpl extends ServiceImpl<SysTeacherMapper, SysTeac
     public boolean saveTeacher(TeacherForm teacherForm) {
 
         String code = teacherForm.getCode();
+        if (StrUtil.isBlank(code)) {
+            code = "LOCAL-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+            teacherForm.setCode(code);
+        }
+        if (teacherForm.getSex() == null) teacherForm.setSex(1);
+        if (teacherForm.getStatus() == null) teacherForm.setStatus(1);
         long codeCount = this.count(new LambdaQueryWrapper<SysTeacher>().eq(SysTeacher::getCode, code));
         Assert.isTrue(codeCount == 0, "职工编号已存在");
 
@@ -147,6 +153,13 @@ public class SysTeacherServiceImpl extends ServiceImpl<SysTeacherMapper, SysTeac
     public boolean updateTeacher(Long teacherId, TeacherForm teacherForm) {
 
         String code = teacherForm.getCode();
+        SysTeacher existing = this.getById(teacherId);
+        if (existing != null && StrUtil.isBlank(code)) {
+            code = existing.getCode();
+            teacherForm.setCode(code);
+        }
+        if (existing != null && teacherForm.getSex() == null) teacherForm.setSex(existing.getSex());
+        if (existing != null && teacherForm.getStatus() == null) teacherForm.setStatus(existing.getStatus());
         long codeCount = this.count(new LambdaQueryWrapper<SysTeacher>().eq(SysTeacher::getCode, code).ne(SysTeacher::getId, teacherId));
         Assert.isTrue(codeCount == 0, "职工编号已存在");
 
