@@ -15,6 +15,7 @@ import {
 } from "@/api/student";
 
 import { StudentQuery, StudentPageVO, StudentForm } from "@/api/student/types";
+import { downloadFile } from "@/utils/download";
 import {
   getStudentFollowups,
   addStudentFollowup,
@@ -354,27 +355,7 @@ const followupRules = reactive({
 
 /** 下载导入模板 */
 function downloadTemplate() {
-  downloadTemplateApi().then((response: any) => {
-    const fileData = response.data;
-    const fileName = decodeURI(
-      response.headers["content-disposition"].split(";")[1].split("=")[1]
-    );
-    const fileType =
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8";
-
-    const blob = new Blob([fileData], { type: fileType });
-    const downloadUrl = window.URL.createObjectURL(blob);
-
-    const downloadLink = document.createElement("a");
-    downloadLink.href = downloadUrl;
-    downloadLink.download = fileName;
-
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-
-    document.body.removeChild(downloadLink);
-    window.URL.revokeObjectURL(downloadUrl);
-  });
+  downloadTemplateApi().then((response: any) => downloadFile(response, "学生导入模板.xlsx"));
 }
 
 /** Excel文件 Change */
@@ -393,27 +374,7 @@ function handleFileExceed(files: any) {
 
 /** 导出学生 */
 function handleExport() {
-  exportStudent(queryParams).then((response: any) => {
-    const fileData = response.data;
-    const fileName = decodeURI(
-      response.headers["content-disposition"].split(";")[1].split("=")[1]
-    );
-    const fileType =
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8";
-
-    const blob = new Blob([fileData], { type: fileType });
-    const downloadUrl = window.URL.createObjectURL(blob);
-
-    const downloadLink = document.createElement("a");
-    downloadLink.href = downloadUrl;
-    downloadLink.download = fileName;
-
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-
-    document.body.removeChild(downloadLink);
-    window.URL.revokeObjectURL(downloadUrl);
-  });
+  exportStudent(queryParams).then((response: any) => downloadFile(response, "学生信息.xlsx"));
 }
 
 onMounted(() => {

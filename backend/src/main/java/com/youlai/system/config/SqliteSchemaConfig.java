@@ -30,7 +30,7 @@ import java.util.Set;
 @Component
 @ConditionalOnProperty(name = "spring.datasource.driver-class-name", havingValue = "org.sqlite.JDBC")
 public class SqliteSchemaConfig {
-    static final int CURRENT_SCHEMA_VERSION = 7;
+    static final int CURRENT_SCHEMA_VERSION = 8;
     private static final DateTimeFormatter BACKUP_TIME = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
     private static final String VERSION_TABLE = "app_schema_version";
 
@@ -124,7 +124,13 @@ public class SqliteSchemaConfig {
                 execute(connection, "CREATE INDEX IF NOT EXISTS idx_local_score_exam_dataset ON local_score_exam(dataset_id)");
                 execute(connection, "CREATE INDEX IF NOT EXISTS idx_local_score_value_exam ON local_score_value(exam_id,subject)");
             }),
-            new Migration(7, "综合素质评价独立数据集", SqliteSchemaConfig::createLocalQualityTablesAndSnapshotLegacyData)
+            new Migration(7, "综合素质评价独立数据集", SqliteSchemaConfig::createLocalQualityTablesAndSnapshotLegacyData),
+            new Migration(8, "综合素质缺失分值确认", connection -> {
+                execute(connection, "CREATE TABLE IF NOT EXISTS local_quality_score_confirmation (id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL, dimension TEXT NOT NULL, confirmed_score REAL NOT NULL, updated_at TEXT NOT NULL, UNIQUE(dataset_id,student_id,dimension))");
+                addColumnIfMissing(connection, "local_quality_final_result", "calculated_score", "REAL DEFAULT 0");
+                addColumnIfMissing(connection, "local_quality_final_result", "score_confirmed", "INTEGER DEFAULT 0");
+                addColumnIfMissing(connection, "local_quality_dataset", "workflow_version", "INTEGER DEFAULT 0");
+            })
     );
 
     private static void createLocalQualityTablesAndSnapshotLegacyData(Connection connection) throws SQLException {
@@ -353,12 +359,14 @@ public class SqliteSchemaConfig {
         requireColumns(connection, missing, "sys_exam_course", "count_in_total", "score_mode", "scoring_rule_id");
         requireColumns(connection, missing, "quality_finalization", "a_ratio", "b_ratio", "c_ratio");
         requireColumns(connection, missing, "quality_final_result", "available_terms", "contains_na");
+        requireColumns(connection, missing, "local_quality_final_result", "calculated_score", "score_confirmed");
+        requireColumns(connection, missing, "local_quality_dataset", "workflow_version");
         for (String table : List.of("sys_score_import_log", "sys_student_followup", "sys_score_rule",
                 "sys_student_subject_selection_version", "sys_student_subject_selection",
                 "quality_final_scope", "quality_missing_review", "local_score_dataset", "local_score_exam",
                 "local_score_student", "local_score_value", "local_quality_dataset", "local_quality_student",
                 "local_quality_record", "local_quality_roster_entry", "local_quality_final_scope",
-                "local_quality_missing_review", "local_quality_final_result")) {
+                "local_quality_missing_review", "local_quality_final_result", "local_quality_score_confirmation")) {
             if (!tableExists(connection, table)) missing.add(table);
         }
         if (!missing.isEmpty()) throw new SQLException("SQLite 结构不完整：" + String.join(", ", missing));

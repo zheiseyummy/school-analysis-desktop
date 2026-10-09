@@ -14,6 +14,7 @@ import {
   getScoreImportLogs,
   undoScoreImport,
 } from "@/api/exam_body";
+import { downloadFile } from "@/utils/download";
 
 import {
   ExamBodyQuery,
@@ -265,27 +266,7 @@ function conditionChange() {
 }
 
 function downloadTemplate() {
-  downloadTemplateApi().then((response: any) => {
-    const fileData = response.data;
-    const fileName = decodeURI(
-      response.headers["content-disposition"].split(";")[1].split("=")[1]
-    );
-    const fileType =
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8";
-
-    const blob = new Blob([fileData], { type: fileType });
-    const downloadUrl = window.URL.createObjectURL(blob);
-
-    const downloadLink = document.createElement("a");
-    downloadLink.href = downloadUrl;
-    downloadLink.download = fileName;
-
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-
-    document.body.removeChild(downloadLink);
-    window.URL.revokeObjectURL(downloadUrl);
-  });
+  downloadTemplateApi().then((response: any) => downloadFile(response, "成绩导入模板.xlsx"));
 }
 
 /** Excel文件 Change */

@@ -106,3 +106,10 @@ export function updateQualityFinalLevel(clazzId: number, studentId: number, dime
     data: { studentId, dimension, level },
   });
 }
+export function confirmQualityFinalScore(datasetId: number, studentId: number, dimension: string, score: number) {
+  return request({
+    url: "/api/v1/quality-independent/datasets/" + datasetId + "/final/confirmed-score",
+    method: "put",
+    data: { studentId, dimension, score },
+  });
+}

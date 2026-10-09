@@ -12,6 +12,7 @@ defineOptions({
   inheritAttrs: false,
 });
 import { getGradeExamAnalysisData, getTeacherAnalysisData, exportStudentHistory, getProgressBands, getStudentBiasAnalysis, getGradeInsights, getGradeExamTrend } from "@/api/analysis";
+import { downloadFile } from "@/utils/download";
 import * as echarts from "echarts";
 import { GradePageVO } from "@/api/grade/types";
 import { ExamPageVO } from "@/api/exam/types";
@@ -97,10 +98,7 @@ function handleQuery() {
 function exportCurrentHistory() {
   if (!queryParams.gradeId || !queryParams.examId) return;
   const ids = historyExamIds.value.length ? historyExamIds.value : [queryParams.examId];
-  exportStudentHistory({ gradeId: queryParams.gradeId, examIds: ids.join(",") }).then((response: any) => {
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a"); link.href = url; link.download = "学生成绩综合表.xlsx"; link.click(); window.URL.revokeObjectURL(url);
-  });
+  exportStudentHistory({ gradeId: queryParams.gradeId, examIds: ids.join(",") }).then((response: any) => downloadFile(response, "学生成绩综合表.xlsx"));
 }
 
 /** 重置查询 */

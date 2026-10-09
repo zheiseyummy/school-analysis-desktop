@@ -23,6 +23,7 @@ import { GradePageVO } from "@/api/grade/types";
 import { ClazzPageVO } from "@/api/clazz/types";
 import { ExamPageVO } from "@/api/exam/types";
 import { CoursePageVO } from "@/api/course/types";
+import { downloadFile } from "@/utils/download";
 import * as echarts from "echarts";
 import { TabsPaneContext } from "element-plus";
 const complexClazzList = ref<OptionType[]>(); //携带年级的班级下拉数据源
@@ -126,25 +127,7 @@ function handleQuery() {
 function handlePrinter() {
   queryFormRef.value.validate((valid: any) => {
     if (valid) {
-      getClazzExamAnalysisDataToPdf(queryParams).then((response) => {
-        const content = response.data;
-        const blob = new Blob([content], { type: "application/pdf" });
-        if ("download" in document.createElement("a")) {
-          const elink = document.createElement("a");
-          // elink.download = filename
-          elink.style.display = "none";
-          elink.href = URL.createObjectURL(blob);
-          elink.target = "_blank";
-          document.body.appendChild(elink);
-          elink.click();
-          URL.revokeObjectURL(elink.href);
-          document.body.removeChild(elink);
-        } else {
-          if (navigator.msSaveBlob) {
-            navigator.msSaveBlob(blob, "成绩单.pdf");
-          }
-        }
-      });
+      getClazzExamAnalysisDataToPdf(queryParams).then((response) => downloadFile(response, "班级成绩分析.pdf", "application/pdf"));
     }
   });
 }
@@ -154,27 +137,7 @@ function handlePrinter() {
 function handleExport() {
   queryFormRef.value.validate((valid: any) => {
     if (valid) {
-      getClazzExamAnalysisDataToExcel(queryParams).then((response) => {
-        const fileData = response.data;
-        const fileName = decodeURI(
-          response.headers["content-disposition"].split(";")[1].split("=")[1]
-        );
-        const fileType =
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8";
-
-        const blob = new Blob([fileData], { type: fileType });
-        const downloadUrl = window.URL.createObjectURL(blob);
-
-        const downloadLink = document.createElement("a");
-        downloadLink.href = downloadUrl;
-        downloadLink.download = fileName;
-
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-
-        document.body.removeChild(downloadLink);
-        window.URL.revokeObjectURL(downloadUrl);
-      });
+      getClazzExamAnalysisDataToExcel(queryParams).then((response) => downloadFile(response, "班级成绩分析.xlsx"));
     }
   });
 }

@@ -11,6 +11,7 @@ import com.youlai.system.model.vo.TeacherImportVO;
 import com.youlai.system.plugin.easyexcel.TeacherImportListener;
 import com.youlai.system.controller.LocalScoreAnalysisController;
 import com.youlai.system.controller.StandaloneQualityEvaluationController;
+import com.youlai.system.common.util.QualityScoring;
 import com.youlai.system.service.SysClazzStudentService;
 import com.youlai.system.service.SysClazzService;
 import com.youlai.system.service.SysStudentService;
@@ -24,11 +25,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -55,6 +58,25 @@ class LocalBackendTests {
     @Autowired SysExamService exams;
     @Autowired LocalScoreAnalysisController localScoreAnalysis;
     @Autowired StandaloneQualityEvaluationController standaloneQuality;
+
+    @Test
+    void downloadsAllImportTemplatesAsValidXlsxFiles() throws Exception {
+        for (String endpoint : List.of(
+                "/api/v1/students/template",
+                "/api/v1/teachers/template",
+                "/api/v1/exam_body_s/template")) {
+            MockHttpServletResponse response = mvc.perform(get(endpoint))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse();
+
+            assertThat(response.getContentType())
+                    .contains("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            assertThat(response.getHeader("Content-Disposition")).contains("attachment");
+            assertThat(response.getContentAsByteArray())
+                    .startsWith((byte) 0x50, (byte) 0x4b, (byte) 0x03, (byte) 0x04);
+        }
+    }
 
     @BeforeEach
     void schema() {
@@ -97,14 +119,15 @@ class LocalBackendTests {
         jdbc.execute("DELETE FROM local_score_student");
         jdbc.execute("DELETE FROM local_score_exam");
         jdbc.execute("DELETE FROM local_score_dataset");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_dataset (id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(255) UNIQUE,source_file VARCHAR(255),created_at VARCHAR(64),is_locked INT DEFAULT 0,generated_at VARCHAR(64),locked_at VARCHAR(64),a_ratio DOUBLE DEFAULT 0.6,b_ratio DOUBLE DEFAULT 0.35,c_ratio DOUBLE DEFAULT 0.05)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_dataset (id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(255) UNIQUE,source_file VARCHAR(255),created_at VARCHAR(64),is_locked INT DEFAULT 0,generated_at VARCHAR(64),locked_at VARCHAR(64),a_ratio DOUBLE DEFAULT 0.6,b_ratio DOUBLE DEFAULT 0.35,c_ratio DOUBLE DEFAULT 0.05,workflow_version INT DEFAULT 0)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_student (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,source_code VARCHAR(64),name VARCHAR(128),UNIQUE(dataset_id,source_code))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_record (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),dimension VARCHAR(64),level_or_score VARCHAR(8),UNIQUE(dataset_id,student_id,semester,dimension))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_roster_entry (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),UNIQUE(dataset_id,student_id,semester))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_final_scope (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,source_sheet VARCHAR(64),UNIQUE(dataset_id,student_id))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_missing_review (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,semester VARCHAR(64),status VARCHAR(64),missing_dimensions VARCHAR(255),remark VARCHAR(255),updated_at VARCHAR(64),UNIQUE(dataset_id,student_id,semester))");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_final_result (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,dimension VARCHAR(64),cumulative_score DOUBLE,class_rank INT,automatic_level VARCHAR(16),final_level VARCHAR(16),is_manually_adjusted INT DEFAULT 0,available_terms INT DEFAULT 0,contains_na INT DEFAULT 0,UNIQUE(dataset_id,student_id,dimension))");
-        for (String table : new String[]{"local_quality_final_result", "local_quality_missing_review", "local_quality_final_scope", "local_quality_roster_entry", "local_quality_record", "local_quality_student", "local_quality_dataset"}) jdbc.execute("DELETE FROM " + table);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_final_result (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,dimension VARCHAR(64),cumulative_score DOUBLE,class_rank INT,automatic_level VARCHAR(16),final_level VARCHAR(16),is_manually_adjusted INT DEFAULT 0,available_terms INT DEFAULT 0,contains_na INT DEFAULT 0,calculated_score DOUBLE DEFAULT 0,score_confirmed INT DEFAULT 0,UNIQUE(dataset_id,student_id,dimension))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS local_quality_score_confirmation (id BIGINT AUTO_INCREMENT PRIMARY KEY,dataset_id BIGINT,student_id BIGINT,dimension VARCHAR(64),confirmed_score DOUBLE,updated_at VARCHAR(64),UNIQUE(dataset_id,student_id,dimension))");
+        for (String table : new String[]{"local_quality_final_result", "local_quality_score_confirmation", "local_quality_missing_review", "local_quality_final_scope", "local_quality_roster_entry", "local_quality_record", "local_quality_student", "local_quality_dataset"}) jdbc.execute("DELETE FROM " + table);
     }
 
     @Test
@@ -230,7 +253,7 @@ class LocalBackendTests {
     }
 
     @Test
-    void comprehensiveQualityUploadUsesWorkbookRosterAndMarksMissingTransferTermsAsNA() throws Exception {
+    void comprehensiveQualityWaitsForMissingScoreConfirmationBeforeAllocatingPercentages() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "独立评价测试.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", qualityWorkbookBytes());
         Map<String, Object> imported = standaloneQuality.importWorkbook(file).getData();
@@ -246,15 +269,135 @@ class LocalBackendTests {
             assertThat(row.get("semester")).isEqualTo("junior_1_1");
             assertThat(row.get("status")).isEqualTo("PENDING");
         });
-        standaloneQuality.updateMissingReview(datasetId, findLocalQualityStudentId(datasetId, "Q002"), "junior_1_1",
-                Map.of("status", "CONFIRMED_TRANSFER_IN"));
         standaloneQuality.generateFinal(datasetId);
         List<Map<String, Object>> finalRows = standaloneQuality.finalResults(datasetId).getData().get("rows") instanceof List<?> rows
                 ? (List<Map<String, Object>>) rows : List.of();
         assertThat(finalRows).hasSize(10);
-        assertThat(finalRows).filteredOn(row -> "Q002".equals(row.get("code")))
+        assertThat(finalRows)
                 .allSatisfy(row -> assertThat(row.get("finalLevel")).isEqualTo("N/A"));
-        assertThat(standaloneQuality.finalResults(datasetId).getData().get("scoredStudentCount")).isEqualTo(1);
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("scoredStudentCount")).isEqualTo(0);
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("pendingScoreCount")).isEqualTo(5);
+        standaloneQuality.lockFinal(datasetId, true);
+        assertThat(jdbc.queryForObject("SELECT is_locked FROM local_quality_dataset WHERE id=?", Integer.class, datasetId)).isZero();
+        long missingStudentId = findLocalQualityStudentId(datasetId, "Q002");
+        standaloneQuality.confirmFinalScore(datasetId, Map.of("studentId", missingStudentId, "dimension", "思想品德", "score", 1));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_quality_score_confirmation WHERE dataset_id=?", Integer.class, datasetId)).isZero();
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            standaloneQuality.confirmFinalScore(datasetId, Map.of("studentId", missingStudentId, "dimension", dimension, "score", 9.5));
+        }
+        Map<String, Object> result = standaloneQuality.finalResults(datasetId).getData();
+        assertThat(result.get("scoredStudentCount")).isEqualTo(2);
+        assertThat(result.get("pendingScoreCount")).isEqualTo(0);
+        List<Map<String, Object>> completed = (List<Map<String, Object>>) result.get("rows");
+        assertThat(completed).filteredOn(row -> "Q002".equals(row.get("code")))
+                .allSatisfy(row -> {
+                    assertThat(row.get("calculatedScore")).isEqualTo(8.28);
+                    assertThat(row.get("cumulativeScore")).isEqualTo(9.5);
+                    assertThat(row.get("scoreConfirmed")).isEqualTo(1);
+                    assertThat(row.get("finalLevel")).isEqualTo("B");
+                });
+        assertThat(completed).filteredOn(row -> "Q001".equals(row.get("code")))
+                .allSatisfy(row -> assertThat(row.get("finalLevel")).isEqualTo("A"));
+        assertThat(jdbc.query("SELECT level_or_score FROM local_quality_record WHERE dataset_id=? AND student_id=? AND semester='junior_1_1' AND dimension='思想品德'", (rs, row) -> rs.getString(1), datasetId, missingStudentId)).allMatch("N/A"::equals);
+        Map<String, String> repairedSemester = new java.util.LinkedHashMap<>();
+        for (String dimension : QualityScoring.DIMENSIONS) repairedSemester.put(dimension, "A");
+        standaloneQuality.saveSemester(datasetId, missingStudentId, "junior_1_1", repairedSemester);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM local_quality_score_confirmation WHERE dataset_id=?", Integer.class, datasetId)).isZero();
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("rows")).isEqualTo(List.of());
+        standaloneQuality.generateFinal(datasetId);
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("scoredStudentCount")).isEqualTo(2);
+    }
+
+    @Test
+    void exportsLockedFinalQualityResultAsAReadableExcelWorkbook() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "正式结果导出测试.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", qualityWorkbookBytes());
+        long datasetId = ((Number) standaloneQuality.importWorkbook(file).getData().get("datasetId")).longValue();
+        standaloneQuality.generateFinal(datasetId);
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            standaloneQuality.confirmFinalScore(datasetId, Map.of("studentId", findLocalQualityStudentId(datasetId, "Q002"), "dimension", dimension, "score", 9.5));
+        }
+        standaloneQuality.lockFinal(datasetId, true);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        standaloneQuality.exportFinal(datasetId, response);
+
+        assertThat(response.getContentType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(response.getHeader("Content-Disposition")).contains("attachment").contains("%E7%BB%BC%E5%90%88");
+        try (XSSFWorkbook exported = new XSSFWorkbook(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+            Sheet sheet = exported.getSheet("最终结果");
+            assertThat(sheet).isNotNull();
+            assertThat(sheet.getLastRowNum()).isEqualTo(2);
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("姓名");
+            assertThat((int) sheet.getRow(0).getLastCellNum()).isEqualTo(11);
+            Row transferredStudent = java.util.stream.StreamSupport.stream(sheet.spliterator(), false)
+                    .filter(row -> "测试学生乙".equals(row.getCell(0).getStringCellValue()))
+                    .findFirst().orElseThrow();
+            for (int column = 1; column < 6; column++) assertThat(transferredStudent.getCell(column).getNumericCellValue()).isEqualTo(9.5);
+            for (int column = 6; column < 11; column++) assertThat(transferredStudent.getCell(column).getStringCellValue()).isEqualTo("B");
+        }
+    }
+
+    @Test
+    void comprehensiveQualityRanksAndAllocatesGradesIndependentlyForEachDimension() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "五维交叉排名测试.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", qualityCrossedRankingWorkbookBytes());
+        long datasetId = ((Number) standaloneQuality.importWorkbook(file).getData().get("datasetId")).longValue();
+        standaloneQuality.generateFinal(datasetId);
+        assertThat(standaloneQuality.finalResults(datasetId).getData().get("pendingScoreCount")).isEqualTo(5);
+
+        long transferredStudentId = findLocalQualityStudentId(datasetId, "Q002");
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            standaloneQuality.confirmFinalScore(datasetId, Map.of("studentId", transferredStudentId,
+                    "dimension", dimension, "score", 9.5));
+        }
+        Map<String, Object> result = standaloneQuality.finalResults(datasetId).getData();
+        assertThat(result.get("pendingScoreCount")).isEqualTo(0);
+        assertThat(result.get("scoredStudentCount")).isEqualTo(2);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) result.get("rows");
+        assertThat(rows).hasSize(10);
+        assertThat(rows).filteredOn(row -> "Q001".equals(row.get("code")) && "思想品德".equals(row.get("dimension")))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.get("cumulativeScore")).isEqualTo(10.0);
+                    assertThat(row.get("classRank")).isEqualTo(1);
+                    assertThat(row.get("automaticLevel")).isEqualTo("A");
+                });
+        assertThat(rows).filteredOn(row -> "Q002".equals(row.get("code")) && "思想品德".equals(row.get("dimension")))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.get("cumulativeScore")).isEqualTo(9.5);
+                    assertThat(row.get("classRank")).isEqualTo(2);
+                    assertThat(row.get("automaticLevel")).isEqualTo("B");
+                });
+        assertThat(rows).filteredOn(row -> "Q001".equals(row.get("code")) && "学业水平".equals(row.get("dimension")))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.get("cumulativeScore")).isEqualTo(9.0);
+                    assertThat(row.get("classRank")).isEqualTo(2);
+                    assertThat(row.get("automaticLevel")).isEqualTo("B");
+                });
+        assertThat(rows).filteredOn(row -> "Q002".equals(row.get("code")) && "学业水平".equals(row.get("dimension")))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.get("cumulativeScore")).isEqualTo(9.5);
+                    assertThat(row.get("classRank")).isEqualTo(1);
+                    assertThat(row.get("automaticLevel")).isEqualTo("A");
+                });
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            assertThat(rows).filteredOn(row -> dimension.equals(row.get("dimension")))
+                    .extracting(row -> row.get("automaticLevel")).containsExactlyInAnyOrder("A", "B");
+        }
+        standaloneQuality.lockFinal(datasetId, true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        standaloneQuality.exportFinal(datasetId, response);
+        try (XSSFWorkbook exported = new XSSFWorkbook(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+            Sheet sheet = exported.getSheet("最终结果");
+            Row first = sheet.getRow(1);
+            Row second = sheet.getRow(2);
+            assertThat(first.getCell(0).getStringCellValue()).isEqualTo("测试学生甲");
+            assertThat(first.getCell(6).getStringCellValue()).isEqualTo("A");
+            assertThat(first.getCell(7).getStringCellValue()).isEqualTo("B");
+            assertThat(second.getCell(0).getStringCellValue()).isEqualTo("测试学生乙");
+            assertThat(second.getCell(6).getStringCellValue()).isEqualTo("B");
+            assertThat(second.getCell(7).getStringCellValue()).isEqualTo("A");
+        }
     }
 
     @Test
@@ -331,6 +474,30 @@ class LocalBackendTests {
                     row.createCell(1).setCellValue(student == 0 ? "测试学生甲" : "测试学生乙");
                     for (int i = 0; i < dimensions.length; i++) row.createCell(i + 2).setCellValue(student == 0 ? "A" : "B");
                 }
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static byte[] qualityCrossedRankingWorkbookBytes() throws Exception {
+        String[] sheets = {"七上", "七下", "八上", "八下", "九上", "九下"};
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            for (int semester = 0; semester < sheets.length; semester++) {
+                Sheet sheet = workbook.createSheet(sheets[semester]);
+                Row header = sheet.createRow(0);
+                header.createCell(0).setCellValue("学号"); header.createCell(1).setCellValue("姓名");
+                for (int i = 0; i < QualityScoring.DIMENSIONS.length; i++)
+                    header.createCell(i + 2).setCellValue(QualityScoring.DIMENSIONS[i]);
+                Row first = sheet.createRow(1);
+                first.createCell(0).setCellValue("Q001"); first.createCell(1).setCellValue("测试学生甲");
+                for (int i = 0; i < QualityScoring.DIMENSIONS.length; i++)
+                    first.createCell(i + 2).setCellValue(i == 1 ? "B" : "A");
+                if (semester == 0) continue;
+                Row second = sheet.createRow(2);
+                second.createCell(0).setCellValue("Q002"); second.createCell(1).setCellValue("测试学生乙");
+                for (int i = 0; i < QualityScoring.DIMENSIONS.length; i++)
+                    second.createCell(i + 2).setCellValue(i == 1 ? "A" : "B");
             }
             workbook.write(output);
             return output.toByteArray();

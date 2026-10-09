@@ -4,6 +4,7 @@ import { getComplexClazzOptions } from "@/api/clazz";
 import { getStudentOptions } from "@/api/student";
 import { exportStudentAnalysis, exportStudentAnalysisBatch, exportStudentAnalysisPdf, getStudentScoreAnalysisData } from "@/api/analysis/index";
 import { getSelfExamOptions } from "@/api/exam";
+import { downloadFile } from "@/utils/download";
 import { CoursePageVO } from "@/api/course/types";
 import { TabsPaneContext } from "element-plus";
 defineOptions({
@@ -126,35 +127,17 @@ function handleQuery() {
 
 function handleExport() {
   if (!queryParams.studentId || !queryParams.examId || !studentOverview.value.rows.length) return;
-  exportStudentAnalysis({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => {
-    const contentDisposition = response.headers?.["content-disposition"] ?? "";
-    const encodedName = contentDisposition.split("filename=")[1]?.replace(/^"|"$/g, "");
-    const fileName = encodedName ? decodeURIComponent(encodedName) : "学生个人分析.xlsx";
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  });
-}
-
-function downloadBinary(response: any, fallback: string) {
-  const contentDisposition = response.headers?.["content-disposition"] ?? "";
-  const encodedName = contentDisposition.split("filename=")[1]?.replace(/^"|"$/g, "");
-  const fileName = encodedName ? decodeURIComponent(encodedName) : fallback;
-  const url = window.URL.createObjectURL(new Blob([response.data]));
-  const link = document.createElement("a"); link.href = url; link.download = fileName; link.click(); window.URL.revokeObjectURL(url);
+  exportStudentAnalysis({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => downloadFile(response, "学生个人分析.xlsx"));
 }
 
 function handleExportPdf() {
   if (!queryParams.studentId || !queryParams.examId) return;
-  exportStudentAnalysisPdf({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => downloadBinary(response, "学生个人成绩分析.pdf"));
+  exportStudentAnalysisPdf({ studentId: queryParams.studentId, examId: queryParams.examId }).then((response: any) => downloadFile(response, "学生个人成绩分析.pdf", "application/pdf"));
 }
 
 function handleBatchExport() {
   if (!queryParams.clazzId || !queryParams.examId) return;
-  exportStudentAnalysisBatch({ clazzId: queryParams.clazzId, examId: queryParams.examId, format: "both" }).then((response: any) => downloadBinary(response, "学生个人成绩分析报告.zip"));
+  exportStudentAnalysisBatch({ clazzId: queryParams.clazzId, examId: queryParams.examId, format: "both" }).then((response: any) => downloadFile(response, "学生个人成绩分析报告.zip", "application/zip"));
 }
 
 function resetQuery() {

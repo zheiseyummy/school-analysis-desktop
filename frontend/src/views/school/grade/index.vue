@@ -70,7 +70,7 @@ function handleQuery() {
 
 /** 重置查询 */
 function resetQuery() {
-  queryFormRef.value.resetFields();
+  queryFormRef.value?.resetFields();
   queryParams.pageNum = 1;
   handleQuery();
 }
@@ -140,26 +140,33 @@ function resetForm() {
 }
 
 /** 删除年级 */
-function handleDelete(gradeId?: number) {
-  const gradeIds = [gradeId || ids.value].join(",");
+async function handleDelete(gradeId?: number) {
+  const gradeIds = (gradeId != null ? [gradeId] : ids.value).join(",");
   if (!gradeIds) {
     ElMessage.warning("请勾选删除项");
     return;
   }
 
-  ElMessageBox.confirm("确认删除已选中的数据项?", "警告", {
-    confirmButtonText: "确定",
-    cancelButtonText: "取消",
-    type: "warning",
-  }).then(() => {
-    loading.value = true;
-    deleteGrades(gradeIds)
-      .then(() => {
-        ElMessage.success("删除成功");
-        resetQuery();
-      })
-      .finally(() => (loading.value = false));
-  });
+  try {
+    await ElMessageBox.confirm("确认删除已选中的数据项?", "警告", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+
+  loading.value = true;
+  try {
+    await deleteGrades(gradeIds);
+    ElMessage.success("删除成功");
+    resetQuery();
+  } catch {
+    // 请求层已显示具体错误；这里收束异步事件，避免未处理的拒绝影响页面切换。
+  } finally {
+    loading.value = false;
+  }
 }
 
 onMounted(() => {

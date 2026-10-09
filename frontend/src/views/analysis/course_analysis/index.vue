@@ -9,6 +9,7 @@ import { getComplexClazzOptions } from "@/api/clazz";
 import { getOptions } from "@/api/exam";
 import { getGradeOptions } from "@/api/grade";
 import { getCourseOptions } from "@/api/course";
+import { downloadFile } from "@/utils/download";
 
 defineOptions({ name: "CourseAnalysis", inheritAttrs: false });
 
@@ -75,26 +76,15 @@ function resetQuery() {
   loadExamOptions();
 }
 
-function download(response: any, fallbackName: string, type: string) {
-  const blob = new Blob([response.data], { type });
-  const link = document.createElement("a");
-  link.href = window.URL.createObjectURL(blob);
-  const disposition = response.headers?.["content-disposition"] || "";
-  const encoded = disposition.split("filename=")[1];
-  link.download = encoded ? decodeURIComponent(encoded.replace(/^\"|\"$/g, "")) : fallbackName;
-  link.click();
-  window.URL.revokeObjectURL(link.href);
-}
-
 function exportExcel() {
   getCourseAnalysisToExcel(queryParams).then((response) =>
-    download(response, "学科分析报告.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    downloadFile(response, "学科分析报告.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
   );
 }
 
 function exportPdf() {
   getCourseAnalysisToPdf(queryParams).then((response) =>
-    download(response, "学科分析报告.pdf", "application/pdf")
+    downloadFile(response, "学科分析报告.pdf", "application/pdf")
   );
 }
 

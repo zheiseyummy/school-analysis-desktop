@@ -145,7 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_local_score_value_exam ON local_score_value(exam_
 CREATE TABLE IF NOT EXISTS local_quality_dataset (
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, source_file TEXT,
   created_at TEXT NOT NULL, is_locked INTEGER DEFAULT 0, generated_at TEXT, locked_at TEXT,
-  a_ratio REAL DEFAULT 0.60, b_ratio REAL DEFAULT 0.35, c_ratio REAL DEFAULT 0.05
+  a_ratio REAL DEFAULT 0.60, b_ratio REAL DEFAULT 0.35, c_ratio REAL DEFAULT 0.05,
+  workflow_version INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS local_quality_student (
   id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, source_code TEXT,
@@ -176,6 +177,12 @@ CREATE TABLE IF NOT EXISTS local_quality_final_result (
   dimension TEXT NOT NULL, cumulative_score REAL NOT NULL, class_rank INTEGER NOT NULL,
   automatic_level TEXT NOT NULL, final_level TEXT NOT NULL, is_manually_adjusted INTEGER DEFAULT 0,
   available_terms INTEGER DEFAULT 0, contains_na INTEGER DEFAULT 0,
+  calculated_score REAL DEFAULT 0, score_confirmed INTEGER DEFAULT 0,
+  UNIQUE(dataset_id, student_id, dimension)
+);
+CREATE TABLE IF NOT EXISTS local_quality_score_confirmation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  dimension TEXT NOT NULL, confirmed_score REAL NOT NULL, updated_at TEXT NOT NULL,
   UNIQUE(dataset_id, student_id, dimension)
 );
 CREATE INDEX IF NOT EXISTS idx_local_quality_record_student ON local_quality_record(dataset_id, student_id, semester);

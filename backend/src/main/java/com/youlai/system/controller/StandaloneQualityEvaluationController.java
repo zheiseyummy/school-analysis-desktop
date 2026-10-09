@@ -58,8 +58,9 @@ public class StandaloneQualityEvaluationController {
             datasetId = insert("INSERT INTO local_quality_dataset(name,source_file,created_at) VALUES(?,?,?)",
                     datasetName, sourceFile, LocalDateTime.now().toString());
         } else {
-            jdbc.update("UPDATE local_quality_dataset SET source_file=?,is_locked=0,locked_at=NULL WHERE id=?", sourceFile, datasetId);
+            jdbc.update("UPDATE local_quality_dataset SET source_file=?,is_locked=0,locked_at=NULL,generated_at=NULL,workflow_version=0 WHERE id=?", sourceFile, datasetId);
             jdbc.update("DELETE FROM local_quality_final_result WHERE dataset_id=?", datasetId);
+            jdbc.update("DELETE FROM local_quality_score_confirmation WHERE dataset_id=?", datasetId);
         }
 
         int matchedRows = 0;
@@ -129,13 +130,27 @@ public class StandaloneQualityEvaluationController {
         requireDataset(datasetId);
         requireStudent(datasetId, studentId);
         if (!Arrays.asList(QualityScoring.SEMESTERS).contains(semester)) return Result.failed("评价学期无效");
+        if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND is_locked=1", datasetId) > 0) return Result.failed("最终评定已锁定，请先解锁再修改学期评价");
+        Map<String, String> validated = new LinkedHashMap<>();
         for (String dimension : QualityScoring.DIMENSIONS) {
             String level = Objects.requireNonNullElse(ratings.get(dimension), "N/A").trim().toUpperCase();
             if (!List.of("A", "B", "C", "N/A").contains(level)) return Result.failed("评价等级无效");
+            validated.put(dimension, level);
+        }
+        Set<String> changedDimensions = new HashSet<>();
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            String level = validated.get(dimension);
+            List<String> previous = jdbc.query("SELECT level_or_score FROM local_quality_record WHERE dataset_id=? AND student_id=? AND semester=? AND dimension=?", (rs, row) -> rs.getString(1), datasetId, studentId, semester, dimension);
+            if (previous.isEmpty() || !level.equals(previous.get(0))) changedDimensions.add(dimension);
             saveRecord(datasetId, studentId, semester, dimension, level);
         }
         ensureRoster(datasetId, studentId, semester);
         ensureMissingReviews(datasetId, studentId);
+        if (!changedDimensions.isEmpty()) {
+            for (String dimension : changedDimensions) jdbc.update("DELETE FROM local_quality_score_confirmation WHERE dataset_id=? AND student_id=? AND dimension=?", datasetId, studentId, dimension);
+            jdbc.update("DELETE FROM local_quality_final_result WHERE dataset_id=?", datasetId);
+            jdbc.update("UPDATE local_quality_dataset SET generated_at=NULL,workflow_version=0 WHERE id=?", datasetId);
+        }
         return Result.success();
     }
 
@@ -154,22 +169,25 @@ public class StandaloneQualityEvaluationController {
     @GetMapping("/datasets/{datasetId}/final")
     public Result<Map<String, Object>> finalResults(@PathVariable long datasetId) {
         requireDataset(datasetId);
-        Map<String, Object> state = jdbc.queryForMap("SELECT COALESCE(is_locked,0) AS isLocked,generated_at AS generatedAt,COALESCE(a_ratio,0.60) AS aRatio,COALESCE(b_ratio,0.35) AS bRatio,COALESCE(c_ratio,0.05) AS cRatio,locked_at AS lockedAt FROM local_quality_dataset WHERE id=?", datasetId);
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT r.student_id AS studentId,s.source_code AS code,s.name,r.dimension,r.cumulative_score AS cumulativeScore,
-                  CASE WHEN r.contains_na=1 THEN 0 ELSE r.class_rank END AS classRank,
-                  CASE WHEN r.contains_na=1 THEN 'N/A' ELSE r.automatic_level END AS automaticLevel,
-                  CASE WHEN r.contains_na=1 THEN 'N/A' ELSE r.final_level END AS finalLevel,
-                  r.available_terms AS availableTerms,r.contains_na AS containsNa
+        Map<String, Object> state = jdbc.queryForMap("SELECT COALESCE(is_locked,0) AS isLocked,COALESCE(workflow_version,0) AS workflowVersion,generated_at AS generatedAt,COALESCE(a_ratio,0.60) AS aRatio,COALESCE(b_ratio,0.35) AS bRatio,COALESCE(c_ratio,0.05) AS cRatio,locked_at AS lockedAt FROM local_quality_dataset WHERE id=?", datasetId);
+        boolean currentWorkflow = number(state.get("workflowVersion")) == 1;
+        List<Map<String, Object>> rows = currentWorkflow ? jdbc.queryForList("""
+                SELECT r.student_id AS studentId,s.source_code AS code,s.name,r.dimension,
+                  r.calculated_score AS calculatedScore,r.cumulative_score AS cumulativeScore,
+                  r.class_rank AS classRank,r.automatic_level AS automaticLevel,r.final_level AS finalLevel,
+                  r.available_terms AS availableTerms,r.contains_na AS containsNa,r.score_confirmed AS scoreConfirmed
                 FROM local_quality_final_result r JOIN local_quality_student s ON s.id=r.student_id
                 WHERE r.dataset_id=? ORDER BY s.source_code,s.name,r.dimension
-                """, datasetId);
+                """, datasetId) : List.of();
         int baseline = count("SELECT COUNT(*) FROM local_quality_final_scope WHERE dataset_id=?", datasetId);
         int pending = count("SELECT COUNT(*) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId);
         int pendingStudents = count("SELECT COUNT(DISTINCT student_id) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId);
-        int scored = count("SELECT COUNT(DISTINCT student_id) FROM local_quality_final_result WHERE dataset_id=? AND contains_na=0 AND automatic_level<>'N/A'", datasetId);
+        int scored = currentWorkflow ? count("SELECT COUNT(DISTINCT student_id) FROM local_quality_final_result WHERE dataset_id=? AND automatic_level<>'N/A'", datasetId) : 0;
+        int pendingScores = currentWorkflow ? count("SELECT COUNT(*) FROM local_quality_final_result WHERE dataset_id=? AND contains_na=1 AND score_confirmed=0", datasetId) : 0;
+        int pendingScoreStudents = currentWorkflow ? count("SELECT COUNT(DISTINCT student_id) FROM local_quality_final_result WHERE dataset_id=? AND contains_na=1 AND score_confirmed=0", datasetId) : 0;
         return Result.success(Map.of("state", state, "rows", rows, "baselineStudentCount", baseline,
-                "pendingReviewCount", pending, "pendingStudentCount", pendingStudents, "scoredStudentCount", scored));
+                "pendingReviewCount", pending, "pendingStudentCount", pendingStudents, "scoredStudentCount", scored,
+                "pendingScoreCount", pendingScores, "pendingScoreStudentCount", pendingScoreStudents));
     }
 
     @GetMapping("/datasets/{datasetId}/final/missing-reviews")
@@ -206,58 +224,86 @@ public class StandaloneQualityEvaluationController {
         if (number(config.get("isLocked")) == 1) return Result.failed("最终评定已锁定，请先解锁后重新计算");
         List<Map<String, Object>> scoped = jdbc.queryForList("SELECT s.id,s.source_code AS code,s.name FROM local_quality_final_scope f JOIN local_quality_student s ON s.id=f.student_id WHERE f.dataset_id=? ORDER BY s.source_code,s.name", datasetId);
         if (scoped.isEmpty()) return Result.failed("请先导入包含最后一个学期工作表的评价数据");
-        List<Map<String, Object>> pending = jdbc.queryForList("SELECT DISTINCT student_id AS id FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId);
-        Set<Long> pendingIds = new HashSet<>();
-        pending.forEach(row -> pendingIds.add(((Number) row.get("id")).longValue()));
-        List<Map<String, Object>> eligibleForAssessment = scoped.stream().filter(row -> !pendingIds.contains(((Number) row.get("id")).longValue())).toList();
-        double aRatio = number(config.get("aRatio")), cRatio = number(config.get("cRatio"));
+        Map<String, List<QualityResultValue>> byDimension = new LinkedHashMap<>();
+        Set<Long> pendingStudentIds = new HashSet<>();
+        int pendingScores = 0;
+        // 第一阶段只计算已录成绩；缺失项必须由使用者确认最终累计分。
+        for (String dimension : QualityScoring.DIMENSIONS) {
+            List<QualityResultValue> values = new ArrayList<>();
+            for (Map<String, Object> student : scoped) {
+                long studentId = ((Number) student.get("id")).longValue();
+                QualityResultValue value = calculateFinalValue(datasetId, studentId, text(student.get("code")), text(student.get("name")), dimension);
+                values.add(value);
+                if (value.containsNa() && !value.scoreConfirmed()) {
+                    pendingScores++;
+                    pendingStudentIds.add(studentId);
+                }
+            }
+            byDimension.put(dimension, values);
+        }
+        boolean readyForGrades = pendingScores == 0;
+        int[] gradeCounts = allocateGradeCounts(scoped.size(), number(config.get("aRatio")), number(config.get("bRatio")), number(config.get("cRatio")));
         jdbc.update("DELETE FROM local_quality_final_result WHERE dataset_id=?", datasetId);
         int rowsCreated = 0;
-        int scoredStudents = 0;
+        // 五个维度各自按最终分值排名、各自套用 A/B/C 名额，不使用五维总分排名。
         for (String dimension : QualityScoring.DIMENSIONS) {
-            List<QualityResultValue> ranked = new ArrayList<>();
-            List<QualityResultValue> excluded = new ArrayList<>();
-            for (Map<String, Object> student : eligibleForAssessment) {
-                long studentId = ((Number) student.get("id")).longValue();
-                List<Map<String, Object>> records = jdbc.queryForList("SELECT semester,level_or_score FROM local_quality_record WHERE dataset_id=? AND student_id=? AND dimension=?", datasetId, studentId, dimension);
-                double total = 0;
-                int available = 0;
-                boolean missing = false;
-                for (String semester : QualityScoring.SEMESTERS) {
-                    Optional<Map<String, Object>> match = records.stream().filter(row -> semester.equals(row.get("semester"))).findFirst();
-                    String level = match.map(row -> text(row.get("level_or_score"))).orElse("N/A");
-                    if (List.of("A", "B", "C").contains(level)) { available++; total += QualityScoring.score(semester, level); }
-                    else missing = true;
-                }
-                QualityResultValue value = new QualityResultValue(studentId, total, available, missing);
-                if (missing) excluded.add(value); else ranked.add(value);
+            List<QualityResultValue> values = byDimension.get(dimension);
+            if (readyForGrades) {
+                values.sort(Comparator.comparingDouble(QualityResultValue::score).reversed()
+                        .thenComparing(QualityResultValue::code).thenComparing(QualityResultValue::name)
+                        .thenComparingLong(QualityResultValue::studentId));
             }
-            if ("思想品德".equals(dimension)) scoredStudents = ranked.size();
-            ranked.sort(Comparator.comparingDouble(QualityResultValue::score).reversed());
-            int rank = 0; int index = 0; Double previous = null;
-            for (QualityResultValue value : ranked) {
-                index++;
-                if (previous == null || Double.compare(previous, value.score()) != 0) rank = index;
-                previous = value.score();
-                String level = automaticLevel(rank, ranked.size(), aRatio, cRatio);
-                saveFinal(datasetId, value, dimension, rank, level, false);
-                rowsCreated++;
-            }
-            for (QualityResultValue value : excluded) {
-                saveFinal(datasetId, value, dimension, 0, "N/A", true);
+            for (int index = 0; index < values.size(); index++) {
+                QualityResultValue value = values.get(index);
+                int rank = readyForGrades ? index + 1 : 0;
+                String level = readyForGrades ? levelAtRank(index, gradeCounts) : "N/A";
+                saveFinal(datasetId, value, dimension, rank, level);
                 rowsCreated++;
             }
         }
-        jdbc.update("UPDATE local_quality_dataset SET generated_at=? WHERE id=?", LocalDateTime.now().toString(), datasetId);
-        return Result.success(Map.of("count", rowsCreated, "studentCount", scoped.size(), "scoredStudentCount", scoredStudents,
+        jdbc.update("UPDATE local_quality_dataset SET generated_at=?,workflow_version=1 WHERE id=?", LocalDateTime.now().toString(), datasetId);
+        return Result.success(Map.of("count", rowsCreated, "studentCount", scoped.size(), "scoredStudentCount", readyForGrades ? scoped.size() : 0,
+                "pendingScoreCount", pendingScores, "pendingScoreStudentCount", pendingStudentIds.size(),
                 "pendingReviewCount", count("SELECT COUNT(*) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId),
-                "pendingStudentCount", pendingIds.size()));
+                "pendingStudentCount", count("SELECT COUNT(DISTINCT student_id) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId)));
+    }
+
+    @PutMapping("/datasets/{datasetId}/final/confirmed-score")
+    @Transactional
+    public Result<Map<String, Object>> confirmFinalScore(@PathVariable long datasetId, @RequestBody Map<String, Object> body) {
+        requireDataset(datasetId);
+        if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND is_locked=1", datasetId) > 0) return Result.failed("最终评定已锁定，请先解锁");
+        long studentId;
+        double confirmedScore;
+        try {
+            studentId = Long.parseLong(text(body.get("studentId")));
+            confirmedScore = Double.parseDouble(text(body.get("score")));
+        } catch (NumberFormatException exception) {
+            return Result.failed("请选择学生并填写有效的最终累计分");
+        }
+        String dimension = text(body.get("dimension"));
+        if (!Arrays.asList(QualityScoring.DIMENSIONS).contains(dimension)) return Result.failed("评价维度无效");
+        if (count("SELECT COUNT(*) FROM local_quality_final_scope WHERE dataset_id=? AND student_id=?", datasetId, studentId) == 0) return Result.failed("该学生不在最终评定范围内");
+        QualityResultValue calculated = calculateFinalValue(datasetId, studentId, "", "", dimension);
+        if (!calculated.containsNa()) return Result.failed("该维度没有缺失成绩，无需人工确认分值");
+        if (!Double.isFinite(confirmedScore) || confirmedScore < calculated.calculatedScore() - 0.000001 || confirmedScore > 10.000001)
+            return Result.failed("确认分值必须在已计算分值和 10 分之间");
+        confirmedScore = Math.round(confirmedScore * 100.0) / 100.0;
+        Long id = findId("SELECT id FROM local_quality_score_confirmation WHERE dataset_id=? AND student_id=? AND dimension=?", datasetId, studentId, dimension);
+        if (id == null) jdbc.update("INSERT INTO local_quality_score_confirmation(dataset_id,student_id,dimension,confirmed_score,updated_at) VALUES(?,?,?,?,?)", datasetId, studentId, dimension, confirmedScore, LocalDateTime.now().toString());
+        else jdbc.update("UPDATE local_quality_score_confirmation SET confirmed_score=?,updated_at=? WHERE id=?", confirmedScore, LocalDateTime.now().toString(), id);
+        return generateFinal(datasetId);
     }
 
     @PostMapping("/datasets/{datasetId}/final/lock")
     public Result<Void> lockFinal(@PathVariable long datasetId, @RequestParam(defaultValue = "true") boolean locked) {
         requireDataset(datasetId);
-        if (locked && count("SELECT COUNT(*) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId) > 0) return Result.failed("仍有缺失成绩待确认，确认后才能锁定导出");
+        if (locked) {
+            if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND workflow_version=1", datasetId) == 0) return Result.failed("请先按新规则重新计算最终分值和等级");
+            int expected = count("SELECT COUNT(*) FROM local_quality_final_scope WHERE dataset_id=?", datasetId) * QualityScoring.DIMENSIONS.length;
+            int ready = count("SELECT COUNT(*) FROM local_quality_final_result WHERE dataset_id=? AND automatic_level<>'N/A' AND final_level IN ('A','B','C')", datasetId);
+            if (expected == 0 || ready != expected) return Result.failed("请先计算分值并确认全部 N/A 学生的最终分值，再生成 A/B/C 等级");
+        }
         jdbc.update("UPDATE local_quality_dataset SET is_locked=?,locked_at=? WHERE id=?", locked ? 1 : 0, locked ? LocalDateTime.now().toString() : null, datasetId);
         return Result.success();
     }
@@ -266,9 +312,9 @@ public class StandaloneQualityEvaluationController {
     public Result<Void> updateRatios(@PathVariable long datasetId, @RequestBody Map<String, Object> body) {
         requireDataset(datasetId);
         double a = ratio(body.get("aRatio"), .60), b = ratio(body.get("bRatio"), .35), c = ratio(body.get("cRatio"), .05);
-        if (a < 0 || b < 0 || c < 0 || Math.abs(a + b + c - 1) > .0001) return Result.failed("A/B/C 比例必须为非负数且合计 100%");
+        if (!Double.isFinite(a) || !Double.isFinite(b) || !Double.isFinite(c) || a < 0 || b < 0 || c < 0 || Math.abs(a + b + c - 1) > .0001) return Result.failed("A/B/C 比例必须为非负数且合计 100%");
         if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND is_locked=1", datasetId) > 0) return Result.failed("最终评定已锁定，请先解锁后调整比例");
-        jdbc.update("UPDATE local_quality_dataset SET a_ratio=?,b_ratio=?,c_ratio=? WHERE id=?", a, b, c, datasetId);
+        jdbc.update("UPDATE local_quality_dataset SET a_ratio=?,b_ratio=?,c_ratio=?,workflow_version=0 WHERE id=?", a, b, c, datasetId);
         return Result.success();
     }
 
@@ -278,7 +324,7 @@ public class StandaloneQualityEvaluationController {
         String level = text(body.get("level")).toUpperCase();
         if (!List.of("A", "B", "C").contains(level)) return Result.failed("最终等级只能是 A、B 或 C");
         if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND is_locked=1", datasetId) > 0) return Result.failed("最终评定已锁定，请先解锁");
-        int updated = jdbc.update("UPDATE local_quality_final_result SET final_level=?,is_manually_adjusted=1 WHERE dataset_id=? AND student_id=? AND dimension=? AND contains_na=0",
+        int updated = jdbc.update("UPDATE local_quality_final_result SET final_level=?,is_manually_adjusted=1 WHERE dataset_id=? AND student_id=? AND dimension=? AND automatic_level<>'N/A'",
                 level, datasetId, body.get("studentId"), body.get("dimension"));
         return updated == 0 ? Result.failed("未找到可调整的最终评定") : Result.success();
     }
@@ -302,7 +348,10 @@ public class StandaloneQualityEvaluationController {
         requireDataset(datasetId);
         Map<String, Object> state = jdbc.queryForMap("SELECT is_locked AS isLocked,a_ratio AS aRatio,b_ratio AS bRatio,c_ratio AS cRatio,locked_at AS lockedAt FROM local_quality_dataset WHERE id=?", datasetId);
         if (number(state.get("isLocked")) != 1) throw new IllegalStateException("请先由老师确认并锁定最终评定，再导出正式结果");
-        if (count("SELECT COUNT(*) FROM local_quality_missing_review WHERE dataset_id=? AND status='PENDING'", datasetId) > 0) throw new IllegalStateException("仍有缺失成绩待确认，不能导出正式结果");
+        if (count("SELECT COUNT(*) FROM local_quality_dataset WHERE id=? AND workflow_version=1", datasetId) == 0) throw new IllegalStateException("请先按新规则重新计算最终结果，再导出正式表");
+        int expected = count("SELECT COUNT(*) FROM local_quality_final_scope WHERE dataset_id=?", datasetId) * QualityScoring.DIMENSIONS.length;
+        if (expected == 0 || count("SELECT COUNT(*) FROM local_quality_final_result WHERE dataset_id=? AND final_level IN ('A','B','C')", datasetId) != expected)
+            throw new IllegalStateException("最终分值或等级尚未完整确认，不能导出正式结果");
         List<Map<String, Object>> scoped = jdbc.queryForList("SELECT s.id AS studentId,s.name,s.source_code AS code FROM local_quality_final_scope f JOIN local_quality_student s ON s.id=f.student_id WHERE f.dataset_id=? ORDER BY s.source_code,s.name", datasetId);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode("综合素质评价-正式最终结果.xlsx", "UTF-8"));
@@ -320,7 +369,7 @@ public class StandaloneQualityEvaluationController {
                         .forEach(item -> byDimension.put(text(item.get("dimension")), item));
                 for (String dimension : QualityScoring.DIMENSIONS) {
                     Map<String, Object> item = byDimension.get(dimension);
-                    if (item == null || number(item.get("containsNa")) == 1) row.createCell(column++).setCellValue("N/A");
+                    if (item == null || "N/A".equals(text(item.get("level")))) row.createCell(column++).setCellValue("N/A");
                     else row.createCell(column++).setCellValue(number(item.get("score")));
                 }
                 for (String dimension : QualityScoring.DIMENSIONS) {
@@ -438,17 +487,47 @@ public class StandaloneQualityEvaluationController {
         return Arrays.stream(QualityScoring.DIMENSIONS).filter(dimension -> !List.of("A", "B", "C").contains(levels.getOrDefault(dimension, "N/A"))).collect(java.util.stream.Collectors.joining("、"));
     }
 
-    private void saveFinal(long datasetId, QualityResultValue value, String dimension, int rank, String level, boolean containsNa) {
-        jdbc.update("INSERT INTO local_quality_final_result(dataset_id,student_id,dimension,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na) VALUES(?,?,?,?,?,?,?,0,?,?)",
-                datasetId, value.studentId(), dimension, value.score(), rank, level, level, value.availableTerms(), containsNa ? 1 : 0);
+    private QualityResultValue calculateFinalValue(long datasetId, long studentId, String code, String name, String dimension) {
+        List<Map<String, Object>> records = jdbc.queryForList("SELECT semester,level_or_score FROM local_quality_record WHERE dataset_id=? AND student_id=? AND dimension=?", datasetId, studentId, dimension);
+        Map<String, String> levels = new HashMap<>();
+        records.forEach(row -> levels.put(text(row.get("semester")), text(row.get("level_or_score")).toUpperCase()));
+        double calculatedScore = 0;
+        int available = 0;
+        for (String semester : QualityScoring.SEMESTERS) {
+            String level = levels.getOrDefault(semester, "N/A");
+            if (List.of("A", "B", "C").contains(level)) {
+                available++;
+                calculatedScore += QualityScoring.score(semester, level);
+            }
+        }
+        calculatedScore = Math.round(calculatedScore * 100.0) / 100.0;
+        boolean containsNa = available < QualityScoring.SEMESTERS.length;
+        List<Double> confirmed = containsNa ? jdbc.query("SELECT confirmed_score FROM local_quality_score_confirmation WHERE dataset_id=? AND student_id=? AND dimension=?", (rs, row) -> rs.getDouble(1), datasetId, studentId, dimension) : List.of();
+        boolean scoreConfirmed = !confirmed.isEmpty();
+        double finalScore = scoreConfirmed ? confirmed.get(0) : calculatedScore;
+        return new QualityResultValue(studentId, code, name, calculatedScore, finalScore, available, containsNa, scoreConfirmed);
     }
 
-    private static String automaticLevel(int rank, int size, double aRatio, double cRatio) {
-        if (size == 0) return "B";
-        int a = (int) Math.ceil(size * aRatio), c = (int) Math.floor(size * cRatio);
-        if (rank <= a) return "A";
-        if (c > 0 && rank > size - c) return "C";
-        return "B";
+    private void saveFinal(long datasetId, QualityResultValue value, String dimension, int rank, String level) {
+        jdbc.update("INSERT INTO local_quality_final_result(dataset_id,student_id,dimension,calculated_score,cumulative_score,class_rank,automatic_level,final_level,is_manually_adjusted,available_terms,contains_na,score_confirmed) VALUES(?,?,?,?,?,?,?,?,0,?,?,?)",
+                datasetId, value.studentId(), dimension, value.calculatedScore(), value.score(), rank, level, level, value.availableTerms(), value.containsNa() ? 1 : 0, value.scoreConfirmed() ? 1 : 0);
+    }
+
+    /** Largest-remainder allocation keeps A/B/C counts as close as possible to configured ratios. */
+    static int[] allocateGradeCounts(int size, double aRatio, double bRatio, double cRatio) {
+        double[] exact = {size * aRatio, size * bRatio, size * cRatio};
+        int[] counts = {(int) Math.floor(exact[0]), (int) Math.floor(exact[1]), (int) Math.floor(exact[2])};
+        Integer[] order = {0, 1, 2};
+        Arrays.sort(order, Comparator.comparingDouble((Integer index) -> exact[index] - counts[index]).reversed().thenComparingInt(index -> index));
+        int remaining = size - counts[0] - counts[1] - counts[2];
+        for (int i = 0; i < remaining; i++) counts[order[i]]++;
+        return counts;
+    }
+
+    private static String levelAtRank(int zeroBasedRank, int[] counts) {
+        if (zeroBasedRank < counts[0]) return "A";
+        if (zeroBasedRank < counts[0] + counts[1]) return "B";
+        return "C";
     }
 
     private void writeRosterSheet(Workbook workbook, List<Map<String, Object>> students) {
@@ -511,5 +590,6 @@ public class StandaloneQualityEvaluationController {
     private record Header(int row, Integer codeColumn, int nameColumn, Map<String, Integer> dimensions) { }
     private record QualityRow(String semester, int rowNumber, String code, String name, Map<String, String> levels) { }
     private record ParsedQuality(List<QualityRow> rows, List<String> issues, Map<String, String> semesters, boolean studentsWithoutIdHaveDuplicateNames) { }
-    private record QualityResultValue(long studentId, double score, int availableTerms, boolean containsNa) { }
+    private record QualityResultValue(long studentId, String code, String name, double calculatedScore, double score,
+                                      int availableTerms, boolean containsNa, boolean scoreConfirmed) { }
 }

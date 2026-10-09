@@ -1,21 +1,17 @@
 <template>
   <section class="app-main">
-    <router-view>
-      <template #default="{ Component, route }">
-        <transition
-          enter-active-class="animate__animated animate__fadeIn"
-          mode="out-in"
-        >
-          <keep-alive :include="cachedViews">
-            <component :is="Component" :key="route.path" />
-          </keep-alive>
-        </transition>
-      </template>
-    </router-view>
+    <RouteErrorBoundary>
+      <router-view v-slot="{ Component, route }">
+        <keep-alive :include="cachedViews">
+          <component :is="Component" :key="route.path" />
+        </keep-alive>
+      </router-view>
+    </RouteErrorBoundary>
   </section>
 </template>
 
 <script setup lang="ts">
+import RouteErrorBoundary from "@/components/RouteErrorBoundary/index.vue";
 import { useTagsViewStore } from "@/store";
 
 const cachedViews = computed(() => useTagsViewStore().cachedViews); // 缓存页面集合

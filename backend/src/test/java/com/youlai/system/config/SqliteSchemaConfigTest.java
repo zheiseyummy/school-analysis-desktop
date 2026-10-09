@@ -46,7 +46,10 @@ class SqliteSchemaConfigTest {
             assertThat(hasColumn(statement, "quality_final_result", "contains_na")).isTrue();
             assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_score_dataset'")).isEqualTo(1);
             assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_score_value'")).isEqualTo(1);
-            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'local_quality_%'")).isEqualTo(7);
+            assertThat(singleInt(statement, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'local_quality_%'")).isEqualTo(8);
+            assertThat(hasColumn(statement, "local_quality_final_result", "calculated_score")).isTrue();
+            assertThat(hasColumn(statement, "local_quality_final_result", "score_confirmed")).isTrue();
+            assertThat(hasColumn(statement, "local_quality_dataset", "workflow_version")).isTrue();
         }
 
         Path backupDirectory = temporaryDirectory.resolve("backup");
@@ -58,7 +61,7 @@ class SqliteSchemaConfigTest {
         LocalDatabaseBackupService backupService = new LocalDatabaseBackupService(dataSource);
         ReflectionTestUtils.setField(backupService, "datasourceUrl", url);
         assertThat(backupService.listBackups()).singleElement()
-                .asString().startsWith("school_pre_migration_v0_to_v7_");
+                .asString().startsWith("school_pre_migration_v0_to_v8_");
 
         config.initialize();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
